@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Images
+Research/a.JPG
+Research/b.RAF
+Research/c.tif
+Research/d.ORF
+Research/e.dng
