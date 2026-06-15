@@ -1,0 +1,2 @@
+"""MacPhotoMaster package."""
+

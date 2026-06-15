@@ -1,20 +1,33 @@
 ## Part 1 - Plan
 
-- [ ] Confirm scope and constraints from `AGENTS.md` (macOS only, `uv`, PySide6, non-destructive delete, background workers).
+- [x] Confirm scope and constraints from `AGENTS.md` (macOS only, `uv`, PySide6, non-destructive delete, background workers).
   - Test: checklist is agreed and no unresolved blockers remain.
-- [ ] Create app shell with 3 panels (Source, Preview, Metadata/Actions).
+- [x] Create app shell with 3 panels (Source, Preview, Metadata/Actions).
   - Test: `uv run python main.py` opens a window with all three panels visible.
-- [ ] Define a minimal project structure for UI, metadata, file ops, and workers.
+- [x] Define a minimal project structure for UI, metadata, file ops, and workers.
   - Test: imports resolve cleanly and app starts without runtime import errors.
 
 ## Part 2 - File handling - read SD
 
-- [ ] Implement source browser to select SD card and browse directories.
+- [x] Implement source browser to select SD card and browse directories.
   - Test: selecting a folder updates file list for `.jpg`, `.jpeg`, `.orf`.
-- [ ] Implement thumbnail grid with background loading (`QThread` or `QRunnable`).
+- [x] Implement thumbnail grid with background loading (`QThread` or `QRunnable`).
   - Test: UI remains responsive while loading 100+ files.
-- [ ] Implement full preview sync with selected thumbnail and zoom controls.
+- [x] Implement full preview sync with selected thumbnail and zoom controls.
   - Test: thumbnail selection updates preview immediately and zoom works both directions.
+
+### Part 2 implementation notes (completed)
+
+- Source panel now uses `QFileSystemModel` + `QTreeView` for folder browsing and a thumbnail grid in `QScrollArea`.
+- Thumbnails and center preview use background `QRunnable` tasks (`ImageLoadTask`) to avoid blocking the UI thread.
+- Separate thread pools are used for thumbnails vs preview so selected image preview is not starved by large thumbnail queues.
+- RAW fallback for ORF now uses `exiftool -b -PreviewImage` when Pillow cannot decode the raw file directly.
+- Preview now defaults to fit-to-pane on load, keeps manual zoom (1-400%), and includes a `Fit` button.
+- Worker lifetime management retains active task/signal references until completion to avoid teardown races and crashes.
+- Manual verification completed against `/Volumes/OM SYSTEM/DCIM/105OMSYS` with ~3K files:
+  - All thumbnails loaded.
+  - JPG and ORF previews rendered.
+  - Preview no longer remains stuck on "Loading...".
 
 ## Part 3 - Metadata handling - read exif
 

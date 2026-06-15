@@ -1,0 +1,9 @@
+"""Shared UI style values."""
+
+ACCENT_CYAN = "#20d6d3"
+ORANGE_PRIMARY = "#d68220"
+SALMON_SECONDARY = "#d6755f"
+DARK_TEAL = "#385756"
+BROWN_TEXT = "#574938"
+PANEL_BACKGROUND = "#fbfaf8"
+
