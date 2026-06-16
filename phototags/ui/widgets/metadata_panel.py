@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
@@ -56,6 +58,40 @@ class MetadataPanel(QWidget):
         form.addRow("Keywords", self.keywords_edit)
         layout.addLayout(form)
 
+        technical_heading = QLabel("Technical (Read-Only)")
+        technical_heading.setObjectName("subHeading")
+        layout.addWidget(technical_heading)
+
+        technical_form = QFormLayout()
+        technical_form.setSpacing(6)
+        technical_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        technical_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        technical_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        technical_form.setHorizontalSpacing(10)
+
+        self.camera_value = QLabel("")
+        self.camera_value.setObjectName("metaValue")
+        self.camera_value.setMinimumWidth(360)
+        self.lens_type_value = QLabel("")
+        self.lens_type_value.setObjectName("metaValue")
+        self.lens_type_value.setMinimumWidth(360)
+        self.aperture_value = QLabel("")
+        self.aperture_value.setObjectName("metaValue")
+        self.focal_length_value = QLabel("")
+        self.focal_length_value.setObjectName("metaValue")
+        self.focus_distance_value = QLabel("")
+        self.focus_distance_value.setObjectName("metaValue")
+        self.captured_at_value = QLabel("")
+        self.captured_at_value.setObjectName("metaValue")
+
+        technical_form.addRow("Camera", self.camera_value)
+        technical_form.addRow("Lens Type", self.lens_type_value)
+        technical_form.addRow("Aperture", self.aperture_value)
+        technical_form.addRow("Focal Length", self.focal_length_value)
+        technical_form.addRow("Focus Distance", self.focus_distance_value)
+        technical_form.addRow("Captured At", self.captured_at_value)
+        layout.addLayout(technical_form)
+
         rename_heading = QLabel("Rename Preview")
         rename_heading.setObjectName("subHeading")
         layout.addWidget(rename_heading)
@@ -69,7 +105,18 @@ class MetadataPanel(QWidget):
         self.process_button.setEnabled(False)
         layout.addWidget(self.process_button)
 
-        layout.addStretch(1)
+        debug_heading = QLabel("EXIF Dump (Debug)")
+        debug_heading.setObjectName("subHeading")
+        layout.addWidget(debug_heading)
+
+        self.exif_dump_view = QPlainTextEdit()
+        self.exif_dump_view.setReadOnly(True)
+        self.exif_dump_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.exif_dump_view.setMinimumHeight(220)
+        self.exif_dump_view.setPlaceholderText(
+            "Full EXIF JSON dump for selected image appears here."
+        )
+        layout.addWidget(self.exif_dump_view, 1)
 
         self.setStyleSheet(
             f"""
@@ -92,6 +139,19 @@ class MetadataPanel(QWidget):
                 color: {BROWN_TEXT};
                 font-size: 12px;
             }}
+            QLabel#metaValue {{
+                color: {BROWN_TEXT};
+                font-size: 12px;
+                background: #f6f3f1;
+                border: 1px solid #dfd8d1;
+                border-radius: 5px;
+                padding: 4px 6px;
+            }}
+            QPlainTextEdit {{
+                color: {BROWN_TEXT};
+                font-size: 11px;
+                font-family: Menlo, Monaco, monospace;
+            }}
             QPushButton {{
                 background: {SALMON_SECONDARY};
                 color: white;
@@ -105,3 +165,46 @@ class MetadataPanel(QWidget):
             }}
             """
         )
+
+    def set_metadata_fields(
+        self,
+        *,
+        title: str,
+        description: str,
+        keywords: str,
+        camera: str,
+        lens_type: str,
+        aperture: str,
+        focal_length: str,
+        focus_distance: str,
+        captured_at: str,
+    ) -> None:
+        """Populate editable and read-only metadata fields."""
+        self.title_edit.setText(title)
+        self.description_edit.setPlainText(description)
+        self.keywords_edit.setPlainText(keywords)
+        self.camera_value.setText(camera)
+        self.lens_type_value.setText(lens_type)
+        self.aperture_value.setText(aperture)
+        self.focal_length_value.setText(focal_length)
+        self.focus_distance_value.setText(focus_distance)
+        self.captured_at_value.setText(captured_at)
+
+    def set_exif_dump(self, dump_text: str) -> None:
+        """Populate full EXIF debug dump."""
+        self.exif_dump_view.setPlainText(dump_text)
+
+    def clear_metadata(self, message: str = "") -> None:
+        """Clear all metadata fields and debug text."""
+        self.set_metadata_fields(
+            title="",
+            description="",
+            keywords="",
+            camera="",
+            lens_type="",
+            aperture="",
+            focal_length="",
+            focus_distance="",
+            captured_at="",
+        )
+        self.exif_dump_view.setPlainText(message)

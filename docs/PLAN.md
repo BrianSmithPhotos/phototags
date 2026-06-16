@@ -31,10 +31,33 @@
 
 ## Part 3 - Metadata handling - read exif
 
-- [ ] Build an `exiftool` read service wrapper (single-purpose API).
+- [x] Build an `exiftool` read service wrapper (single-purpose API).
   - Test: known sample image returns expected EXIF fields.
-- [ ] Map EXIF into right-panel fields: title, description, keywords, camera/lens/date-time.
+- [x] Map EXIF into right-panel fields: title, description, keywords, camera/lens/date-time.
   - Test: selecting an image populates fields correctly, including fallback values for missing tags.
+
+### Part 3 implementation notes (completed)
+
+- Added `ExifService` (`phototags/services/exif_service.py`) to read full metadata and map UI fields.
+- Read command used for metadata dump and field extraction:
+  - `exiftool -j -G1 -a -s <file>`
+- Added async EXIF loading worker (`phototags/workers/exif_loader.py`) to keep the UI responsive while selecting files.
+- Added temporary full EXIF debug viewer in lower-right panel (`QPlainTextEdit`, scrollable, no-wrap).
+- Debug viewer is intentionally temporary and will be removed once final metadata fields are selected for dedicated UI controls.
+- Added read-only technical fields for camera (make + model), lens type, aperture, focal length, focus distance, and capture date-time.
+- Verified on `/Volumes/OM SYSTEM/DCIM/105OMSYS`:
+  - EXIF fields populate from selection.
+  - Full JSON EXIF dump appears in debug pane.
+
+### ExifTool reference details used
+
+- `-j` (JSON output) was used so full metadata can be parsed reliably into Python structures.
+- `-G1` was used to include family-1 group names in keys (example: `ExifIFD:DateTimeOriginal`), reducing tag name ambiguity.
+- `-a` was used to allow duplicate tags to be extracted when present.
+- `-s` was used for short tag names to keep JSON keys concise and stable.
+- Source docs:
+  - `https://exiftool.org/ExifTool.html`
+  - `https://exiftool.org/exiftool_pod2.html`
 
 ## Part 4 - Metadata handling - write back changed and new exif
 
