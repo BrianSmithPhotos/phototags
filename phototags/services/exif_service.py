@@ -77,6 +77,7 @@ class ExifService:
                 metadata,
                 (
                     "XMP:Title",
+                    "XMP-dc:Title",
                     "IPTC:ObjectName",
                     "IFD0:ImageDescription",
                     "EXIF:ImageDescription",
@@ -87,6 +88,7 @@ class ExifService:
                 metadata,
                 (
                     "XMP:Description",
+                    "XMP-dc:Description",
                     "IPTC:Caption-Abstract",
                     "EXIF:UserComment",
                     "IFD0:ImageDescription",
@@ -162,6 +164,7 @@ class ExifService:
         """Normalize keywords/tags into comma-delimited text for UI editing."""
         candidates = (
             "XMP:Subject",
+            "XMP-dc:Subject",
             "IPTC:Keywords",
             "XMP:TagsList",
             "Composite:Keywords",

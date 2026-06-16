@@ -61,12 +61,27 @@
 
 ## Part 4 - Metadata handling - write back changed and new exif
 
-- [ ] Build an `exiftool` write service for edited fields.
+- [x] Build an `exiftool` write service for edited fields.
   - Test: save action persists updates verified by immediate reread.
-- [ ] Support idempotent writes (no duplicate keyword growth on repeated save).
+- [x] Support idempotent writes (no duplicate keyword growth on repeated save).
   - Test: saving same values twice produces unchanged keyword list.
-- [ ] Add error reporting and rollback behavior for failed writes.
+- [x] Add error reporting and rollback behavior for failed writes.
   - Test: simulated failure shows clear error and leaves file unchanged.
+
+### Part 4 implementation notes (completed for current scope)
+
+- Current Part 4 scope is Description + Keywords only (Title remains deferred until Part 5 rename behavior is finalized).
+- Added `MetadataWriteService` (`phototags/services/metadata_write_service.py`) with:
+  - description writes to `IPTC:Caption-Abstract` (primary) and mirrored `XMP-dc:Description`
+  - keywords writes to `IPTC:Keywords` and mirrored `XMP-dc:Subject`
+- Added `Save Description + Keywords` action in the right panel and async write worker (`phototags/workers/metadata_writer.py`).
+- Keyword normalization is comma-delimited with whitespace trim and case-insensitive de-duplication.
+- Idempotence fix: list tags are rewritten via repeated `-Tag=value` assignments (not `+=`) after clearing.
+- Rollback strategy: if exiftool write fails and `<file>_original` exists, backup is restored; on success backup is removed.
+- Verified by automated temp-file tests:
+  - two identical saves preserve keyword set without growth
+  - IPTC/XMP description and keyword tags match expected values
+  - UI status shows save success/failure messages
 
 ## Part 5 - File renaming
 

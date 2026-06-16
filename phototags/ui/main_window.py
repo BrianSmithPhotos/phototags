@@ -10,11 +10,13 @@ from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
 from phototags.services.exif_service import ExifService, ExifUiData
+from phototags.services.metadata_write_service import MetadataWriteResult, MetadataWriteService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
 from phototags.ui.widgets.source_panel import SourcePanel
 from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
+from phototags.workers.metadata_writer import MetadataSaveSignals, MetadataSaveTask
 
 PREVIEW_MAX_EDGE = 2800
 THUMBNAIL_WORKERS = 4
@@ -26,18 +28,25 @@ class MainWindow(QMainWindow):
     def __init__(self, source_dir: Path) -> None:
         super().__init__()
         self._exif_service = ExifService()
+        self._metadata_write_service = MetadataWriteService()
         self._thumbnail_pool = QThreadPool(self)
         self._thumbnail_pool.setMaxThreadCount(THUMBNAIL_WORKERS)
         self._preview_pool = QThreadPool(self)
         self._preview_pool.setMaxThreadCount(1)
         self._exif_pool = QThreadPool(self)
         self._exif_pool.setMaxThreadCount(1)
+        self._metadata_write_pool = QThreadPool(self)
+        self._metadata_write_pool.setMaxThreadCount(1)
         self._preview_request_id = 0
         self._preview_job_id = 0
         self._active_preview_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
         self._exif_request_id = 0
         self._exif_job_id = 0
         self._active_exif_jobs: dict[int, tuple[ExifLoadTask, ExifLoadSignals]] = {}
+        self._metadata_write_request_id = 0
+        self._metadata_write_job_id = 0
+        self._active_metadata_write_jobs: dict[int, tuple[MetadataSaveTask, MetadataSaveSignals]] = {}
+        self._selected_image_path: Path | None = None
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
         self.setMinimumSize(1180, 720)
@@ -61,6 +70,7 @@ class MainWindow(QMainWindow):
         self.preview_panel = ImagePreviewWidget()
         self.metadata_panel = MetadataPanel()
         self.source_panel.photo_selected.connect(self._on_photo_selected)
+        self.metadata_panel.save_button.clicked.connect(self._on_save_metadata_clicked)
         if self.source_panel.selected_path is not None:
             self._on_photo_selected(self.source_panel.selected_path)
 
@@ -75,6 +85,7 @@ class MainWindow(QMainWindow):
 
     def _on_photo_selected(self, image_path: Path | None) -> None:
         """Start background preview loading for selected photo."""
+        self._selected_image_path = image_path
         if image_path is None:
             self.preview_panel.clear_preview("No supported files in this folder")
             self.metadata_panel.clear_metadata("No file selected")
@@ -99,6 +110,8 @@ class MainWindow(QMainWindow):
         self._preview_pool.start(task)
 
         self._start_exif_load(image_path=image_path)
+        self.metadata_panel.set_save_button_enabled(True)
+        self.metadata_panel.set_save_status("")
 
     def _start_exif_load(self, image_path: Path) -> None:
         """Start background EXIF load for selected image."""
@@ -195,11 +208,77 @@ class MainWindow(QMainWindow):
             f"Failed to read EXIF for {Path(image_path).name}\n\n{error}"
         )
 
+    def _on_save_metadata_clicked(self) -> None:
+        """Persist description and keywords for selected file."""
+        if self._selected_image_path is None:
+            self.metadata_panel.set_save_status("No file selected", is_error=True)
+            return
+
+        image_path = self._selected_image_path
+        description = self.metadata_panel.description_text()
+        keywords_text = self.metadata_panel.keywords_text()
+
+        self._metadata_write_request_id += 1
+        request_id = self._metadata_write_request_id
+        self._metadata_write_job_id += 1
+        job_id = self._metadata_write_job_id
+
+        self.metadata_panel.set_save_button_enabled(False)
+        self.metadata_panel.set_save_status("Saving description + keywords...")
+
+        signals = MetadataSaveSignals()
+        signals.saved.connect(partial(self._on_metadata_saved, request_id, job_id))
+        signals.failed.connect(partial(self._on_metadata_save_failed, request_id, job_id))
+
+        task = MetadataSaveTask(
+            image_path=image_path,
+            description=description,
+            keywords_text=keywords_text,
+            service=self._metadata_write_service,
+            signals=signals,
+        )
+        self._active_metadata_write_jobs[job_id] = (task, signals)
+        self._metadata_write_pool.start(task)
+
+    def _on_metadata_saved(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        result: MetadataWriteResult,
+    ) -> None:
+        """Handle successful metadata write completion."""
+        self._finish_metadata_write_job(job_id)
+        if request_id != self._metadata_write_request_id:
+            return
+
+        self.metadata_panel.keywords_edit.setPlainText(", ".join(result.keywords))
+        self.metadata_panel.description_edit.setPlainText(result.description)
+        self.metadata_panel.set_save_button_enabled(True)
+        self.metadata_panel.set_save_status("Saved description + keywords")
+        self._start_exif_load(Path(image_path))
+
+    def _on_metadata_save_failed(
+        self,
+        request_id: int,
+        job_id: int,
+        _image_path: str,
+        error: str,
+    ) -> None:
+        """Show metadata save error to user."""
+        self._finish_metadata_write_job(job_id)
+        if request_id != self._metadata_write_request_id:
+            return
+        self.metadata_panel.set_save_button_enabled(True)
+        self.metadata_panel.set_save_status(f"Save failed: {error}", is_error=True)
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Stop thread pools cleanly before window teardown."""
+        self._metadata_write_pool.clear()
         self._exif_pool.clear()
         self._preview_pool.clear()
         self._thumbnail_pool.clear()
+        self._metadata_write_pool.waitForDone()
         self._exif_pool.waitForDone()
         self._preview_pool.waitForDone()
         self._thumbnail_pool.waitForDone()
@@ -212,3 +291,7 @@ class MainWindow(QMainWindow):
     def _finish_exif_job(self, job_id: int) -> None:
         """Release references for completed EXIF tasks."""
         self._active_exif_jobs.pop(job_id, None)
+
+    def _finish_metadata_write_job(self, job_id: int) -> None:
+        """Release references for completed metadata save tasks."""
+        self._active_metadata_write_jobs.pop(job_id, None)

@@ -101,9 +101,17 @@ class MetadataPanel(QWidget):
         self.rename_preview.setPlaceholderText("Filename preview appears in Part 5")
         layout.addWidget(self.rename_preview)
 
+        self.save_button = QPushButton("Save Description + Keywords")
+        self.save_button.setEnabled(False)
+        layout.addWidget(self.save_button)
+
         self.process_button = QPushButton("Process & Move")
         self.process_button.setEnabled(False)
         layout.addWidget(self.process_button)
+
+        self.save_status = QLabel("")
+        self.save_status.setObjectName("statusLabel")
+        layout.addWidget(self.save_status)
 
         debug_heading = QLabel("EXIF Dump (Debug)")
         debug_heading.setObjectName("subHeading")
@@ -151,6 +159,10 @@ class MetadataPanel(QWidget):
                 color: {BROWN_TEXT};
                 font-size: 11px;
                 font-family: Menlo, Monaco, monospace;
+            }}
+            QLabel#statusLabel {{
+                color: {BROWN_TEXT};
+                font-size: 11px;
             }}
             QPushButton {{
                 background: {SALMON_SECONDARY};
@@ -208,3 +220,23 @@ class MetadataPanel(QWidget):
             captured_at="",
         )
         self.exif_dump_view.setPlainText(message)
+        self.set_save_button_enabled(False)
+        self.set_save_status("")
+
+    def description_text(self) -> str:
+        """Return current description editor text."""
+        return self.description_edit.toPlainText()
+
+    def keywords_text(self) -> str:
+        """Return current keywords editor text."""
+        return self.keywords_edit.toPlainText()
+
+    def set_save_button_enabled(self, enabled: bool) -> None:
+        """Enable/disable metadata save action."""
+        self.save_button.setEnabled(enabled)
+
+    def set_save_status(self, message: str, is_error: bool = False) -> None:
+        """Set status line under metadata save actions."""
+        self.save_status.setText(message)
+        color = "#c84d3a" if is_error else BROWN_TEXT
+        self.save_status.setStyleSheet(f"color: {color}; font-size: 11px;")
