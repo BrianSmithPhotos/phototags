@@ -45,6 +45,7 @@
 - Added temporary full EXIF debug viewer in lower-right panel (`QPlainTextEdit`, scrollable, no-wrap).
 - Debug viewer is intentionally temporary and will be removed once final metadata fields are selected for dedicated UI controls.
 - Added read-only technical fields for camera (make + model), lens type, aperture, focal length, focus distance, and capture date-time.
+- Capture date-time display is formatted in a longer human-readable style in UI, while raw EXIF date-time is retained for filename generation logic.
 - Verified on `/Volumes/OM SYSTEM/DCIM/105OMSYS`:
   - EXIF fields populate from selection.
   - Full JSON EXIF dump appears in debug pane.
@@ -110,10 +111,25 @@
 
 ## Part 6 - File handling - move to Mac storage, or deletion options
 
-- [ ] Implement `Process & Move`: write metadata, rename, copy to destination, verify success, then remove source.
-  - Test: destination file exists and is verified before source is removed.
-- [ ] Implement non-destructive delete to macOS Trash (`Cmd+Backspace` shortcut).
-  - Test: selected image moves to `~/.Trash/` and is removed from app view.
+- [x] Implement `Process & Move`: copy selected file to destination structure using rename preview, verify copy, then write metadata to copied file.
+  - Test: destination file exists, checksum matches source, metadata is written on copied file.
+- [x] Implement `Delete/Skip` behavior for SD workflow: remove file from current app session queue only (no disk delete).
+  - Test: selected image disappears from thumbnail queue and source file remains on SD card.
+
+### Part 6 implementation notes (completed)
+
+- Destination root is fixed to `/Users/bsmi067/Pictures/DxO`.
+- Destination folders are derived from capture date:
+  - month folder format: `<month-number> <MonthName>` (example: `6 June`)
+  - day folder format: `DD` (example: `01`)
+- File-type routing:
+  - ORF files copy to `<root>/<month>/<day>/`
+  - JPG/JPEG files copy to `<root>/<month>/<day>/jpg/`
+- Process flow is now copy-only for SD card workflow:
+  - no source deletion is performed after copy
+  - copied file is verified by size and SHA-256 checksum before success is reported
+  - metadata write is applied to the copied destination file
+- `Delete (Cmd+Backspace)` now means "skip/don't copy" for this session; it does not move files to Trash or modify SD content.
 
 ## Phase 2
 
@@ -128,8 +144,17 @@
   - Test: results table includes speed, memory use, and output quality on a fixed sample set.
 - [ ] Define prompt templates for title/description/keywords suggestions.
   - Test: templates produce consistent JSON-like structured output for 20 sample images.
-- [ ] Add optional suggestion panel that never overwrites user text without confirmation.
-  - Test: user can accept/reject per field and manual edits are preserved.
+- [x] Add optional suggestion panel for AI-assisted review:
+  - description is populated directly into Description for in-place editing
+  - keywords are shown in a separate suggested box and only merged into Keywords when user clicks apply
+  - Test: user can iterate AI suggestions, edit description manually, and selectively merge keyword suggestions.
+
+### Phase 2 initial implementation notes (in progress)
+
+- Added local Ollama suggestion flow (`Suggest Description + Keywords`) using a background worker.
+- Added read-only "suggested keywords" panel plus `Add Suggested -> Keywords` merge action.
+- Description suggestions are written directly into the editable Description field, matching current workflow preference.
+- Default Ollama model is `llava` and can be overridden with `PHOTOTAGS_OLLAMA_MODEL`.
 
 ## Handling sets of images - as described in AGENTS.md - jpg variants of the original RAW files.
 
@@ -147,3 +172,12 @@
 
 - [ ] Define export/upload pipeline and required metadata mapping.
   - Test: one manual upload verifies title, description, and tags appear correctly.
+
+## To Do - Field Test Set
+
+- [ ] Capture a targeted test batch with varied camera settings to validate rename/token behavior:
+  - Include ArtFilter on/off cases and profile-based PictureMode cases.
+  - Include StackedImage variants (for example HDR/stacked outputs).
+  - Include MultipleExposure on/off examples.
+  - Include mixed JPG + ORF captures from the same scenes.
+  - Verify filename tokens, metadata display, and save behavior for all variants.

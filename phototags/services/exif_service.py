@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
@@ -26,6 +27,7 @@ class ExifUiData:
     focal_length: str
     focus_distance: str
     captured_at: str
+    captured_at_display: str
     art_filter_token: str
 
 
@@ -166,6 +168,18 @@ class ExifService:
                     "QuickTime:CreateDate",
                 ),
             ),
+            captured_at_display=self._format_captured_at_display(
+                self._first_text(
+                    metadata,
+                    (
+                        "ExifIFD:DateTimeOriginal",
+                        "EXIF:DateTimeOriginal",
+                        "ExifIFD:CreateDate",
+                        "EXIF:CreateDate",
+                        "QuickTime:CreateDate",
+                    ),
+                )
+            ),
             art_filter_token=self._art_filter_token(metadata),
         )
 
@@ -298,6 +312,20 @@ class ExifService:
         if not value:
             return ""
         return value.split(";")[0].strip()
+
+    def _format_captured_at_display(self, captured_at_text: str) -> str:
+        """Return longer, human-readable capture date/time for UI display."""
+        text = captured_at_text.strip()
+        if not text:
+            return ""
+
+        for fmt in ("%Y:%m:%d %H:%M:%S%z", "%Y:%m:%d %H:%M:%S"):
+            try:
+                dt = datetime.strptime(text, fmt)
+                return dt.strftime("%a, %b %d, %Y %H:%M:%S")
+            except ValueError:
+                continue
+        return text
 
     def _to_text(self, value: Any) -> str:
         """Convert metadata value into display text."""

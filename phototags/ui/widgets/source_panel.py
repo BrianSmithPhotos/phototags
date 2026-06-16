@@ -137,6 +137,8 @@ class SourcePanel(QWidget):
         self._thumb_job_id = 0
         self._thumb_tiles: dict[str, ThumbnailTile] = {}
         self._selected_path: Path | None = None
+        self._current_folder: Path = source_dir
+        self._skipped_paths: set[Path] = set()
         self._active_thumb_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
         self._build_ui()
         self._set_source_path(source_dir)
@@ -150,6 +152,11 @@ class SourcePanel(QWidget):
     def selected_path(self) -> Path | None:
         """Return selected image path for current folder."""
         return self._selected_path
+
+    @property
+    def current_folder(self) -> Path:
+        """Return current folder shown in the thumbnail grid."""
+        return self._current_folder
 
     def _build_ui(self) -> None:
         panel = QFrame()
@@ -264,6 +271,7 @@ class SourcePanel(QWidget):
 
     def _load_folder_images(self, folder_path: Path) -> None:
         """Build thumbnail tiles and start background image decoding."""
+        self._current_folder = folder_path
         self.folder_selected.emit(folder_path)
         self._thumb_request_id += 1
         request_id = self._thumb_request_id
@@ -303,6 +311,7 @@ class SourcePanel(QWidget):
                 if item.is_file()
                 and item.suffix.lower() in SUPPORTED_SUFFIXES
                 and not item.name.startswith(".")
+                and item not in self._skipped_paths
             ]
         except OSError:
             return []
@@ -389,3 +398,12 @@ class SourcePanel(QWidget):
     def _finish_thumb_job(self, job_id: int) -> None:
         """Release references for completed thumbnail tasks."""
         self._active_thumb_jobs.pop(job_id, None)
+
+    def mark_skipped(self, image_path: Path) -> None:
+        """Hide a file from the current session without touching disk."""
+        self._skipped_paths.add(image_path)
+        self.reload_current_folder()
+
+    def reload_current_folder(self) -> None:
+        """Reload thumbnails for the current folder path."""
+        self._load_folder_images(self._current_folder)

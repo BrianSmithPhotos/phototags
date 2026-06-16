@@ -11,6 +11,7 @@ import subprocess
 class MetadataWriteResult:
     """Normalized metadata values that were written."""
 
+    title: str
     description: str
     keywords: list[str]
 
@@ -26,19 +27,23 @@ class MetadataWriteService:
         self,
         image_path: Path,
         *,
+        title: str | None = None,
         description: str,
         keywords_text: str,
     ) -> MetadataWriteResult:
-        """Write description and keywords to IPTC/XMP tags.
+        """Write title, description, and keywords to IPTC/XMP tags.
 
+        Title is written to IPTC Object Name and XMP dc:Title.
         Description is written to IPTC caption (primary) and mirrored to XMP description.
         Keywords are normalized and written to IPTC keywords and XMP subject.
         """
+        cleaned_title = title.strip() if title is not None else ""
         cleaned_description = description.strip()
         keywords = self._normalize_keywords(keywords_text)
 
         command = self._build_exiftool_write_command(
             image_path=image_path,
+            title=(cleaned_title if title is not None else None),
             description=cleaned_description,
             keywords=keywords,
         )
@@ -57,23 +62,37 @@ class MetadataWriteService:
             raise MetadataWriteError(message)
 
         self._cleanup_backup(backup_path)
-        return MetadataWriteResult(description=cleaned_description, keywords=keywords)
+        return MetadataWriteResult(
+            title=cleaned_title,
+            description=cleaned_description,
+            keywords=keywords,
+        )
 
     def _build_exiftool_write_command(
         self,
         *,
         image_path: Path,
+        title: str | None,
         description: str,
         keywords: list[str],
     ) -> list[str]:
         """Construct exiftool write command."""
-        command = [
-            "exiftool",
-            f"-IPTC:Caption-Abstract={description}",
-            f"-XMP-dc:Description={description}",
-            "-IPTC:Keywords=",
-            "-XMP-dc:Subject=",
-        ]
+        command = ["exiftool"]
+        if title is not None:
+            command.extend(
+                [
+                    f"-IPTC:ObjectName={title}",
+                    f"-XMP-dc:Title={title}",
+                ]
+            )
+        command.extend(
+            [
+                f"-IPTC:Caption-Abstract={description}",
+                f"-XMP-dc:Description={description}",
+                "-IPTC:Keywords=",
+                "-XMP-dc:Subject=",
+            ]
+        )
         for keyword in keywords:
             command.append(f"-IPTC:Keywords={keyword}")
             command.append(f"-XMP-dc:Subject={keyword}")
