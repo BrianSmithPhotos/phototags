@@ -138,6 +138,32 @@
 - [ ] Enable browsing inside a group (up to 10 variants) while keeping one primary preview.
   - Test: switching variant updates preview and metadata target correctly.
 
+### Phase 2 persisted decisions (restart snapshot)
+
+- Grouping work is prioritized before deeper AI tuning. Reason: ORF + multiple JPG renderings should share one AI pass.
+- There does not appear to be a reliable direct ORF↔JPG linkage tag in current samples; grouping should use capture-time strategy first.
+- Group key strategy v1:
+  - Primary key: `CameraSerial + DateTimeOriginal + SubSecTimeOriginal`
+  - Fallback when subseconds are missing: bucket by `DateTimeOriginal` with ±1 second tolerance plus `ExposureTime + FNumber + ISO + FocalLength` guard values.
+- Planned UI behavior:
+  - Main selection remains in center preview.
+  - Add a variant thumbnail row below preview to switch among files in the same capture group.
+  - Typical group size expected <=10, but UI must handle larger accidental time-buckets gracefully.
+- Planned AI behavior once grouping is in:
+  - Run one AI suggestion pass per group (not per variant).
+  - Representative image preference order: largest JPG in group, otherwise ORF embedded preview.
+  - Description goes directly into editable Description field.
+  - Keywords remain non-destructive in suggested area until user explicitly merges.
+
+### Phase 2 immediate implementation tasks
+
+- [ ] Add grouping debug mode to inspect computed group keys and members before final UI changes.
+  - Test: debug output shows stable groups for ORF+JPG sets and flags ambiguous buckets.
+- [ ] Add group model + storage objects (`CaptureGroup`, representative image selection, member ordering).
+  - Test: each selected file resolves to exactly one group and a deterministic representative.
+- [ ] Add preview-area variant strip (below main preview) and wire selection sync.
+  - Test: selecting a variant updates preview/EXIF while keeping group context.
+
 ## Ollama models - which are best for image description, segmentation, bird identification - local machine 128GB M1 Unified memory
 
 - [ ] Benchmark candidate local models for three tasks: captioning, keywording, bird/flower ID.
@@ -156,10 +182,37 @@
 - Description suggestions are written directly into the editable Description field, matching current workflow preference.
 - Default Ollama model is `llava` and can be overridden with `PHOTOTAGS_OLLAMA_MODEL`.
 
+### Suggested Ollama vision models to benchmark first (M1 Ultra 128GB)
+
+- `gemma4:12b` (7.6GB), `gemma4:26b` (18GB), and `gemma4:31b` (20GB): top-tier current candidates for multimodal quality on local Apple Silicon; benchmark against Qwen for caption + ID quality.
+- `qwen2.5vl:7b` (6.0GB) and `qwen2.5vl:32b` (21GB): strong vision-language generalists, good primary candidates for photo description + keywording.
+- `qwen2.5vl:72b` (49GB): high-quality option for harder fine-grained reasoning/identification if latency is acceptable.
+- `gemma3:12b` (8.1GB) and `gemma3:27b` (17GB): strong multimodal alternatives with long context and good practical throughput.
+- `minicpm-v:8b` (5.5GB): efficient model with good OCR/multi-image behavior; strong fast-pass candidate.
+- `llava:13b` (8.0GB) and `llava:34b` (20GB): useful baseline and compatibility fallback.
+- `moondream:1.8b` (1.7GB): very fast lightweight baseline for quick triage; expect lower fine-detail reliability.
+
+### Suggested image sizing plan for AI benchmarking
+
+- Global scene description + keywords: start with long edge `1280` (current code uses `1600`; evaluate both).
+- Localization/segmentation prompt pass: long edge `1536` to `2048`.
+- Fine bird/flower ID on cropped regions: crop from source, then run long edge `768` to `1024`.
+- Record quality/latency tradeoff by task before locking defaults.
+
+### Model availability references
+
+- Ollama vision capability docs: `https://docs.ollama.com/capabilities/vision`
+- Gemma 4 library page: `https://ollama.com/library/gemma4`
+- Qwen2.5-VL library page: `https://ollama.com/library/qwen2.5vl`
+- Gemma 3 library page: `https://ollama.com/library/gemma3`
+- MiniCPM-V library page: `https://ollama.com/library/minicpm-v`
+- LLaVA library page: `https://ollama.com/library/llava`
+- Moondream library page: `https://ollama.com/library/moondream`
+
 ## Handling sets of images - as described in AGENTS.md - jpg variants of the original RAW files.
 
-- [ ] Determine grouping key strategy (capture timestamp + camera serial + lens + exposure sequence where present).
-  - Test: grouping key correctly merges expected ORF/JPG pairs on sample media.
+- [ ] Confirm final grouping key after field test batches (including multi-exposure and stacked images).
+  - Test: grouping key correctly merges expected ORF/JPG pairs on sample media with low false merges.
 - [ ] Add UI indicator of grouped set size and selected variant.
   - Test: grouped entries display count and selected item clearly.
 
