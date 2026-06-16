@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
 from phototags.services.exif_service import ExifService, ExifUiData
 from phototags.services.metadata_write_service import MetadataWriteResult, MetadataWriteService
+from phototags.services.rename_service import RenameContext, RenameService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
 from phototags.ui.widgets.source_panel import SourcePanel
@@ -29,6 +30,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._exif_service = ExifService()
         self._metadata_write_service = MetadataWriteService()
+        self._rename_service = RenameService()
         self._thumbnail_pool = QThreadPool(self)
         self._thumbnail_pool.setMaxThreadCount(THUMBNAIL_WORKERS)
         self._preview_pool = QThreadPool(self)
@@ -47,6 +49,7 @@ class MainWindow(QMainWindow):
         self._metadata_write_job_id = 0
         self._active_metadata_write_jobs: dict[int, tuple[MetadataSaveTask, MetadataSaveSignals]] = {}
         self._selected_image_path: Path | None = None
+        self._current_exif_ui_data: ExifUiData | None = None
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
         self.setMinimumSize(1180, 720)
@@ -71,6 +74,7 @@ class MainWindow(QMainWindow):
         self.metadata_panel = MetadataPanel()
         self.source_panel.photo_selected.connect(self._on_photo_selected)
         self.metadata_panel.save_button.clicked.connect(self._on_save_metadata_clicked)
+        self.metadata_panel.location_edit.textChanged.connect(self._update_rename_preview)
         if self.source_panel.selected_path is not None:
             self._on_photo_selected(self.source_panel.selected_path)
 
@@ -87,8 +91,10 @@ class MainWindow(QMainWindow):
         """Start background preview loading for selected photo."""
         self._selected_image_path = image_path
         if image_path is None:
+            self._current_exif_ui_data = None
             self.preview_panel.clear_preview("No supported files in this folder")
             self.metadata_panel.clear_metadata("No file selected")
+            self.metadata_panel.set_rename_preview("")
             return
 
         self._preview_request_id += 1
@@ -112,6 +118,7 @@ class MainWindow(QMainWindow):
         self._start_exif_load(image_path=image_path)
         self.metadata_panel.set_save_button_enabled(True)
         self.metadata_panel.set_save_status("")
+        self._update_rename_preview()
 
     def _start_exif_load(self, image_path: Path) -> None:
         """Start background EXIF load for selected image."""
@@ -191,7 +198,9 @@ class MainWindow(QMainWindow):
             focus_distance=ui_data.focus_distance,
             captured_at=ui_data.captured_at,
         )
+        self._current_exif_ui_data = ui_data
         self.metadata_panel.set_exif_dump(dump_text)
+        self._update_rename_preview()
 
     def _on_exif_failed(
         self,
@@ -204,9 +213,11 @@ class MainWindow(QMainWindow):
         self._finish_exif_job(job_id)
         if request_id != self._exif_request_id:
             return
+        self._current_exif_ui_data = None
         self.metadata_panel.clear_metadata(
             f"Failed to read EXIF for {Path(image_path).name}\n\n{error}"
         )
+        self.metadata_panel.set_rename_preview("")
 
     def _on_save_metadata_clicked(self) -> None:
         """Persist description and keywords for selected file."""
@@ -295,3 +306,33 @@ class MainWindow(QMainWindow):
     def _finish_metadata_write_job(self, job_id: int) -> None:
         """Release references for completed metadata save tasks."""
         self._active_metadata_write_jobs.pop(job_id, None)
+
+    def _update_rename_preview(self) -> None:
+        """Regenerate Part 5 filename preview and sync title field."""
+        if self._selected_image_path is None:
+            self.metadata_panel.set_rename_preview("")
+            return
+
+        context = RenameContext(
+            source_path=self._selected_image_path,
+            captured_at=self.metadata_panel.captured_at_value.text(),
+            camera_model=(self._current_exif_ui_data.camera_model if self._current_exif_ui_data else ""),
+            lens_model=(self._current_exif_ui_data.lens_model if self._current_exif_ui_data else ""),
+            location=self.metadata_panel.location_text(),
+            art_filter_token=(self._current_exif_ui_data.art_filter_token if self._current_exif_ui_data else ""),
+        )
+        candidate = self._rename_service.build_filename(context)
+
+        existing = self._existing_names_for_folder(self._selected_image_path.parent)
+        existing.discard(self._selected_image_path.name)
+        unique_name = self._rename_service.ensure_unique_name(candidate, existing)
+
+        self.metadata_panel.set_rename_preview(unique_name)
+        self.metadata_panel.title_edit.setPlainText(Path(unique_name).stem)
+
+    def _existing_names_for_folder(self, folder: Path) -> set[str]:
+        """Return set of existing file names in folder."""
+        try:
+            return {entry.name for entry in folder.iterdir() if entry.is_file()}
+        except OSError:
+            return set()

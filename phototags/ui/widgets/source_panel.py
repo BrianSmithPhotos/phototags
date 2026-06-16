@@ -300,7 +300,9 @@ class SourcePanel(QWidget):
             files = [
                 item
                 for item in folder_path.iterdir()
-                if item.is_file() and item.suffix.lower() in SUPPORTED_SUFFIXES
+                if item.is_file()
+                and item.suffix.lower() in SUPPORTED_SUFFIXES
+                and not item.name.startswith(".")
             ]
         except OSError:
             return []

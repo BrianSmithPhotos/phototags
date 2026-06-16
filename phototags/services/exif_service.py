@@ -19,11 +19,14 @@ class ExifUiData:
     description: str
     keywords: str
     camera: str
+    camera_model: str
     lens_type: str
+    lens_model: str
     aperture: str
     focal_length: str
     focus_distance: str
     captured_at: str
+    art_filter_token: str
 
 
 class ExifToolReadError(RuntimeError):
@@ -97,6 +100,15 @@ class ExifService:
             ),
             keywords=self._keywords_text(metadata),
             camera=self._camera_make_model_text(metadata),
+            camera_model=self._first_text(
+                metadata,
+                (
+                    "IFD0:Model",
+                    "EXIF:Model",
+                    "Composite:Model",
+                    "MakerNotes:Model",
+                ),
+            ),
             lens_type=self._first_text(
                 metadata,
                 (
@@ -105,6 +117,16 @@ class ExifService:
                     "ExifIFD:LensModel",
                     "IFD0:LensModel",
                     "Olympus:LensModel",
+                    "ExifIFD:LensInfo",
+                ),
+            ),
+            lens_model=self._first_text(
+                metadata,
+                (
+                    "ExifIFD:LensModel",
+                    "Olympus:LensModel",
+                    "IFD0:LensModel",
+                    "Composite:LensID",
                     "ExifIFD:LensInfo",
                 ),
             ),
@@ -144,6 +166,7 @@ class ExifService:
                     "QuickTime:CreateDate",
                 ),
             ),
+            art_filter_token=self._art_filter_token(metadata),
         )
 
     def format_full_dump(self, metadata: dict[str, Any]) -> str:
@@ -205,6 +228,55 @@ class ExifService:
             return f"{make} {model}"
         return make or model
 
+    def _art_filter_token(self, metadata: dict[str, Any]) -> str:
+        """Return filename token for ArtFilter/stacking states."""
+        art_effect = self._first_text(
+            metadata,
+            (
+                "Olympus:ArtFilterEffect",
+                "EXIF:ArtFilterEffect",
+                "MakerNotes:ArtFilterEffect",
+            ),
+        )
+        first = self._first_semicolon_text(art_effect)
+        if first and first.casefold() != "off":
+            return first
+
+        picture_mode = self._first_text(
+            metadata,
+            (
+                "Olympus:PictureMode",
+                "EXIF:PictureMode",
+            ),
+        )
+        picture_first = self._first_semicolon_text(picture_mode)
+        if "profile" in picture_first.casefold():
+            return picture_first
+
+        stacked = self._first_text(
+            metadata,
+            (
+                "Olympus:StackedImage",
+                "Olympus:StackedImages",
+                "EXIF:StackedImage",
+            ),
+        )
+        stacked_first = self._first_semicolon_text(stacked)
+        if stacked_first and stacked_first.casefold() != "no":
+            return stacked_first
+
+        multiple_exposure = self._first_text(
+            metadata,
+            (
+                "Olympus:MultipleExposureMode",
+                "EXIF:MultipleExposureMode",
+            ),
+        )
+        if multiple_exposure.casefold().startswith("on"):
+            return "MultipleExposure"
+
+        return ""
+
     def _format_aperture(self, aperture_text: str) -> str:
         """Normalize aperture display to f/<value> format."""
         text = aperture_text.strip()
@@ -220,6 +292,12 @@ class ExifService:
             return f"f/{value:g}"
         except ValueError:
             return f"f/{text}"
+
+    def _first_semicolon_text(self, value: str) -> str:
+        """Return first segment before ';' and trim whitespace."""
+        if not value:
+            return ""
+        return value.split(";")[0].strip()
 
     def _to_text(self, value: Any) -> str:
         """Convert metadata value into display text."""

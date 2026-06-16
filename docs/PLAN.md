@@ -85,12 +85,28 @@
 
 ## Part 5 - File renaming
 
-- [ ] Implement rename pattern engine based on `examples/` defaults.
+- [x] Implement rename pattern engine based on `examples/` defaults.
   - Test: generated name matches expected output for known EXIF fixture.
-- [ ] Add filename sanitization and collision handling.
+- [x] Add filename sanitization and collision handling.
   - Test: invalid path characters are removed and collisions append increment suffix.
-- [ ] Add preview of final filename before processing.
+- [x] Add preview of final filename before processing.
   - Test: preview updates when metadata/rename settings change.
+
+### Part 5 implementation notes (completed)
+
+- Added `RenameService` (`phototags/services/rename_service.py`) with default pattern based on example scripts:
+  - `sequence_location_YYYYMMDD_HHMM_cameraModel_lensModel.ext`
+- Added sanitization for invalid filename characters and whitespace normalization.
+- Added collision-safe preview logic (`_1`, `_2`, ...) against names already present in the current folder.
+- Added optional Location token input in metadata panel for rename generation.
+- Location input is batch-level in the UI and persists across file selection until changed.
+- Title behavior updated: Title field is auto-populated from the generated filename stem.
+- Pattern refinement: original filename segment removed for shorter names; camera/lens tokens now use model values.
+- Added conditional ArtFilter token support in rename pattern:
+  - uses first `ArtFilterEffect` segment when not `Off`
+  - fallback order: `PictureMode` profile -> `StackedImage` -> `MultipleExposure`
+  - inserted between time and camera model in filename
+- Hidden macOS resource-fork sidecar files (`._*`) are now excluded from source image list so preview/EXIF/rename operate on real image files.
 
 ## Part 6 - File handling - move to Mac storage, or deletion options
 

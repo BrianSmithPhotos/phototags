@@ -44,7 +44,9 @@ class MetadataPanel(QWidget):
         form = QFormLayout()
         form.setSpacing(8)
 
-        self.title_edit = QLineEdit()
+        self.title_edit = QTextEdit()
+        self.title_edit.setMinimumHeight(54)
+        self.title_edit.setPlaceholderText("Auto-set from filename stem in Part 5")
         self.description_edit = QTextEdit()
         self.description_edit.setMinimumHeight(90)
         self.keywords_edit = QTextEdit()
@@ -96,6 +98,14 @@ class MetadataPanel(QWidget):
         rename_heading.setObjectName("subHeading")
         layout.addWidget(rename_heading)
 
+        location_label = QLabel("Batch Location")
+        location_label.setObjectName("fieldHelp")
+        layout.addWidget(location_label)
+
+        self.location_edit = QLineEdit()
+        self.location_edit.setPlaceholderText("Applies to all files in current batch until changed")
+        layout.addWidget(self.location_edit)
+
         self.rename_preview = QLineEdit()
         self.rename_preview.setReadOnly(True)
         self.rename_preview.setPlaceholderText("Filename preview appears in Part 5")
@@ -142,6 +152,10 @@ class MetadataPanel(QWidget):
                 color: {ORANGE_PRIMARY};
                 font-weight: 700;
                 margin-top: 4px;
+            }}
+            QLabel#fieldHelp {{
+                color: {BROWN_TEXT};
+                font-size: 11px;
             }}
             QLabel, QLineEdit, QTextEdit {{
                 color: {BROWN_TEXT};
@@ -192,7 +206,7 @@ class MetadataPanel(QWidget):
         captured_at: str,
     ) -> None:
         """Populate editable and read-only metadata fields."""
-        self.title_edit.setText(title)
+        self.title_edit.setPlainText(title)
         self.description_edit.setPlainText(description)
         self.keywords_edit.setPlainText(keywords)
         self.camera_value.setText(camera)
@@ -240,3 +254,11 @@ class MetadataPanel(QWidget):
         self.save_status.setText(message)
         color = "#c84d3a" if is_error else BROWN_TEXT
         self.save_status.setStyleSheet(f"color: {color}; font-size: 11px;")
+
+    def location_text(self) -> str:
+        """Return current rename location value."""
+        return self.location_edit.text()
+
+    def set_rename_preview(self, filename: str) -> None:
+        """Set generated filename preview text."""
+        self.rename_preview.setText(filename)

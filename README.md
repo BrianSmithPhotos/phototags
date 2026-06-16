@@ -19,3 +19,4 @@ Current status:
 - Part 2 complete: SD folder browsing, thumbnail loading, preview with fit-to-pane and zoom, ORF preview fallback.
 - Part 3 complete: EXIF read service, mapped metadata fields, and temporary full EXIF debug dump panel.
 - Part 4 complete (current scope): save Description + Keywords back to IPTC/XMP with idempotent keyword handling and rollback on write failure.
+- Part 5 complete: rename engine + filename preview with sanitization/collision handling, and Title auto-populated from filename stem.
