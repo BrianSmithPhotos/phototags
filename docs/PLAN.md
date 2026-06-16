@@ -157,12 +157,30 @@
 
 ### Phase 2 immediate implementation tasks
 
-- [ ] Add grouping debug mode to inspect computed group keys and members before final UI changes.
+- [x] Add grouping debug mode to inspect computed group keys and members before final UI changes.
   - Test: debug output shows stable groups for ORF+JPG sets and flags ambiguous buckets.
-- [ ] Add group model + storage objects (`CaptureGroup`, representative image selection, member ordering).
+- [x] Add group model + storage objects (`CaptureGroup`, representative image selection, member ordering).
   - Test: each selected file resolves to exactly one group and a deterministic representative.
-- [ ] Add preview-area variant strip (below main preview) and wire selection sync.
+- [x] Add preview-area variant strip (below main preview) and wire selection sync.
   - Test: selecting a variant updates preview/EXIF while keeping group context.
+
+### Phase 2 grouping implementation notes (completed for current scope)
+
+- Added `CaptureGroupService` (`phototags/services/capture_group_service.py`) with deterministic grouping output:
+  - current grouping key: `DateTimeOriginal` (second-level bucket, with `CreateDate` fallback)
+  - this intentionally groups same-second captures together for single-camera SD ingest and group-level AI workflows
+  - representative selection: prefer largest JPG/JPEG in group, otherwise largest file
+  - deterministic member ordering and reverse lookup (`path -> CaptureGroup`)
+- Added async grouping worker (`phototags/workers/capture_group_loader.py`) so folder grouping does not block the UI thread.
+- Source panel now annotates grouped files with set size in thumbnail captions (example: `[3 in set]`).
+- Added center-panel capture variant strip below preview:
+  - shows current set members
+  - selecting a variant switches preview, EXIF load target, and selection state in source panel
+  - variant controls now use thumbnails (with extension fallback) instead of filename text for faster visual filter/art-style comparison
+- Startup wiring fix: initial folder grouping is now explicitly triggered after signal connections in `MainWindow`, so first-load folders are grouped without requiring a manual folder change.
+- Added optional grouping debug output controlled by `PHOTOTAGS_GROUP_DEBUG` (`1/true/yes`):
+  - prints computed group strategy, key text, and group members to stdout for inspection.
+- Current behavior remains file-level for Save/Process actions; group-level apply behavior is deferred to the next Phase 2 step.
 
 ## Ollama models - which are best for image description, segmentation, bird identification - local machine 128GB M1 Unified memory
 

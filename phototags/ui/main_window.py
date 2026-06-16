@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QThreadPool
@@ -10,6 +11,7 @@ from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
 from phototags.services.ai_suggestion_service import AiSuggestionResult, AiSuggestionService
+from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
 from phototags.services.exif_service import ExifService, ExifUiData
 from phototags.services.metadata_write_service import MetadataWriteResult, MetadataWriteService
 from phototags.services.process_move_service import ProcessMoveResult, ProcessMoveService
@@ -17,6 +19,7 @@ from phototags.services.rename_service import RenameContext, RenameService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
 from phototags.ui.widgets.source_panel import SourcePanel
+from phototags.workers.capture_group_loader import CaptureGroupLoadSignals, CaptureGroupLoadTask
 from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 from phototags.workers.ai_suggester import AiSuggestSignals, AiSuggestTask
@@ -26,6 +29,7 @@ from phototags.workers.process_mover import ProcessMoveSignals, ProcessMoveTask
 PREVIEW_MAX_EDGE = 2800
 THUMBNAIL_WORKERS = 4
 DESTINATION_ROOT = Path("/Users/bsmi067/Pictures/DxO")
+GROUP_DEBUG_ENABLED = os.getenv("PHOTOTAGS_GROUP_DEBUG", "").strip().casefold() in {"1", "true", "yes"}
 
 
 class MainWindow(QMainWindow):
@@ -34,6 +38,7 @@ class MainWindow(QMainWindow):
     def __init__(self, source_dir: Path) -> None:
         super().__init__()
         self._ai_suggestion_service = AiSuggestionService()
+        self._capture_group_service = CaptureGroupService()
         self._exif_service = ExifService()
         self._metadata_write_service = MetadataWriteService()
         self._rename_service = RenameService()
@@ -43,6 +48,8 @@ class MainWindow(QMainWindow):
         )
         self._thumbnail_pool = QThreadPool(self)
         self._thumbnail_pool.setMaxThreadCount(THUMBNAIL_WORKERS)
+        self._group_pool = QThreadPool(self)
+        self._group_pool.setMaxThreadCount(1)
         self._preview_pool = QThreadPool(self)
         self._preview_pool.setMaxThreadCount(1)
         self._exif_pool = QThreadPool(self)
@@ -53,6 +60,11 @@ class MainWindow(QMainWindow):
         self._ai_pool.setMaxThreadCount(1)
         self._process_pool = QThreadPool(self)
         self._process_pool.setMaxThreadCount(1)
+        self._group_request_id = 0
+        self._group_job_id = 0
+        self._active_group_jobs: dict[int, tuple[CaptureGroupLoadTask, CaptureGroupLoadSignals]] = {}
+        self._capture_groups: tuple[CaptureGroup, ...] = tuple()
+        self._group_by_path: dict[Path, CaptureGroup] = {}
         self._preview_request_id = 0
         self._preview_job_id = 0
         self._active_preview_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
@@ -94,7 +106,10 @@ class MainWindow(QMainWindow):
         )
         self.preview_panel = ImagePreviewWidget()
         self.metadata_panel = MetadataPanel()
+        self.source_panel.folder_selected.connect(self._on_folder_selected)
         self.source_panel.photo_selected.connect(self._on_photo_selected)
+        self.source_panel.thumbnail_loaded.connect(self._on_thumbnail_loaded)
+        self.preview_panel.variant_selected.connect(self._on_variant_selected)
         self.metadata_panel.save_button.clicked.connect(self._on_save_metadata_clicked)
         self.metadata_panel.process_button.clicked.connect(self._on_process_clicked)
         self.metadata_panel.suggest_button.clicked.connect(self._on_ai_suggest_clicked)
@@ -105,6 +120,7 @@ class MainWindow(QMainWindow):
         self.preview_panel.delete_button.clicked.connect(self._on_skip_selected)
         self._skip_shortcut = QShortcut(QKeySequence("Meta+Backspace"), self)
         self._skip_shortcut.activated.connect(self._on_skip_selected)
+        self._on_folder_selected(self.source_panel.current_folder)
         if self.source_panel.selected_path is not None:
             self._on_photo_selected(self.source_panel.selected_path)
 
@@ -123,6 +139,7 @@ class MainWindow(QMainWindow):
         if image_path is None:
             self._current_exif_ui_data = None
             self.preview_panel.clear_preview("No supported files in this folder")
+            self.preview_panel.set_variants([], None)
             self.metadata_panel.clear_metadata("No file selected")
             self.metadata_panel.set_rename_preview("")
             self.preview_panel.delete_button.setEnabled(False)
@@ -133,6 +150,7 @@ class MainWindow(QMainWindow):
         self._preview_request_id += 1
         request_id = self._preview_request_id
         self.preview_panel.set_loading_state(image_path.name)
+        self._refresh_variant_strip(image_path)
 
         self._preview_job_id += 1
         job_id = self._preview_job_id
@@ -158,6 +176,35 @@ class MainWindow(QMainWindow):
         self.preview_panel.delete_button.setEnabled(not self._process_inflight and not self._ai_inflight)
         self.metadata_panel.set_save_status("")
         self._update_rename_preview()
+
+    def _on_folder_selected(self, folder_path: Path) -> None:
+        """Start background capture grouping for the selected folder."""
+        image_paths = self.source_panel.current_image_paths
+        self._capture_groups = tuple()
+        self._group_by_path = {}
+        self.source_panel.set_group_sizes({})
+
+        if not image_paths:
+            self.preview_panel.set_variants([], None)
+            return
+
+        self._group_request_id += 1
+        request_id = self._group_request_id
+        self._group_job_id += 1
+        job_id = self._group_job_id
+
+        signals = CaptureGroupLoadSignals()
+        signals.loaded.connect(partial(self._on_groups_loaded, request_id, job_id))
+        signals.failed.connect(partial(self._on_groups_failed, request_id, job_id))
+
+        task = CaptureGroupLoadTask(
+            folder_path=folder_path,
+            image_paths=image_paths,
+            service=self._capture_group_service,
+            signals=signals,
+        )
+        self._active_group_jobs[job_id] = (task, signals)
+        self._group_pool.start(task)
 
     def _start_exif_load(self, image_path: Path) -> None:
         """Start background EXIF load for selected image."""
@@ -201,6 +248,19 @@ class MainWindow(QMainWindow):
             return
         self.preview_panel.set_preview_pixmap(pixmap)
 
+    def _on_thumbnail_loaded(self, image_path: Path) -> None:
+        """Refresh variant strip when source thumbnails become available."""
+        selected = self._selected_image_path
+        if selected is None:
+            return
+        group = self._group_by_path.get(selected)
+        if group is None:
+            if image_path == selected:
+                self._refresh_variant_strip(selected)
+            return
+        if image_path in group.members:
+            self._refresh_variant_strip(selected)
+
     def _on_preview_failed(
         self,
         request_id: int,
@@ -243,6 +303,50 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_exif_dump(dump_text)
         self._update_rename_preview()
 
+    def _on_groups_loaded(
+        self,
+        request_id: int,
+        job_id: int,
+        folder_path: str,
+        result: CaptureGroupingResult,
+    ) -> None:
+        """Apply capture grouping result to current UI state."""
+        self._finish_group_job(job_id)
+        if request_id != self._group_request_id:
+            return
+        if Path(folder_path) != self.source_panel.current_folder:
+            return
+
+        self._capture_groups = result.groups
+        self._group_by_path = result.by_path
+        group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
+        self.source_panel.set_group_sizes(group_sizes)
+        self._refresh_variant_strip(self._selected_image_path)
+
+        if GROUP_DEBUG_ENABLED and result.debug_text:
+            print("Capture grouping debug:")
+            print(result.debug_text)
+
+    def _on_groups_failed(
+        self,
+        request_id: int,
+        job_id: int,
+        folder_path: str,
+        error: str,
+    ) -> None:
+        """Handle grouping failure while keeping normal selection workflow active."""
+        self._finish_group_job(job_id)
+        if request_id != self._group_request_id:
+            return
+        if Path(folder_path) != self.source_panel.current_folder:
+            return
+
+        self._capture_groups = tuple()
+        self._group_by_path = {}
+        self.source_panel.set_group_sizes({})
+        self._refresh_variant_strip(self._selected_image_path)
+        self.metadata_panel.set_save_status(f"Grouping failed: {error}", is_error=True)
+
     def _on_exif_failed(
         self,
         request_id: int,
@@ -250,7 +354,7 @@ class MainWindow(QMainWindow):
         image_path: str,
         error: str,
     ) -> None:
-        """Show EXIF load errors in debug panel."""
+        """Show EXIF load errors in metadata area."""
         self._finish_exif_job(job_id)
         if request_id != self._exif_request_id:
             return
@@ -582,14 +686,26 @@ class MainWindow(QMainWindow):
         self.source_panel.mark_skipped(skipped_path)
         self.metadata_panel.set_save_status(f"Skipped {skipped_path.name}")
 
+    def _on_variant_selected(self, image_path: Path) -> None:
+        """Switch preview to selected capture-set variant."""
+        if self._process_inflight or self._ai_inflight:
+            return
+        if image_path == self._selected_image_path:
+            return
+        selected = self.source_panel.select_path(image_path, emit_signal=True)
+        if not selected:
+            self._on_photo_selected(image_path)
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Stop thread pools cleanly before window teardown."""
+        self._group_pool.clear()
         self._ai_pool.clear()
         self._process_pool.clear()
         self._metadata_write_pool.clear()
         self._exif_pool.clear()
         self._preview_pool.clear()
         self._thumbnail_pool.clear()
+        self._group_pool.waitForDone()
         self._ai_pool.waitForDone()
         self._process_pool.waitForDone()
         self._metadata_write_pool.waitForDone()
@@ -597,6 +713,10 @@ class MainWindow(QMainWindow):
         self._preview_pool.waitForDone()
         self._thumbnail_pool.waitForDone()
         super().closeEvent(event)
+
+    def _finish_group_job(self, job_id: int) -> None:
+        """Release references for completed capture-group tasks."""
+        self._active_group_jobs.pop(job_id, None)
 
     def _finish_preview_job(self, job_id: int) -> None:
         """Release references for completed preview tasks."""
@@ -617,6 +737,27 @@ class MainWindow(QMainWindow):
     def _finish_process_job(self, job_id: int) -> None:
         """Release references for completed process-and-copy tasks."""
         self._active_process_jobs.pop(job_id, None)
+
+    def _refresh_variant_strip(self, selected_path: Path | None) -> None:
+        """Refresh variant strip for current selection and grouping state."""
+        if selected_path is None:
+            self.preview_panel.set_variants([], None, {})
+            return
+
+        group = self._group_by_path.get(selected_path)
+        if group is None:
+            self.preview_panel.set_variants(
+                [selected_path],
+                selected_path,
+                {selected_path: self.source_panel.thumbnail_for_path(selected_path)},
+            )
+            return
+        members = list(group.members)
+        thumbnails = {
+            path: self.source_panel.thumbnail_for_path(path)
+            for path in members
+        }
+        self.preview_panel.set_variants(members, selected_path, thumbnails)
 
     def _update_rename_preview(self) -> None:
         """Regenerate Part 5 filename preview and sync title field."""

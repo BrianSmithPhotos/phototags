@@ -38,6 +38,7 @@ class ThumbnailTile(QFrame):
     def __init__(self, image_path: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.image_path = image_path
+        self._group_size = 1
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -55,11 +56,12 @@ class ThumbnailTile(QFrame):
         self.thumb_label.setFixedSize(140, 120)
         layout.addWidget(self.thumb_label, 0, Qt.AlignmentFlag.AlignCenter)
 
-        self.name_label = QLabel(self.image_path.name)
+        self.name_label = QLabel("")
         self.name_label.setWordWrap(True)
         self.name_label.setObjectName("nameLabel")
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.name_label)
+        self.set_group_size(1)
 
         self._apply_selected_style(selected=False)
 
@@ -83,6 +85,15 @@ class ThumbnailTile(QFrame):
         """Display fallback text when thumbnail decoding fails."""
         self.thumb_label.setPixmap(QPixmap())
         self.thumb_label.setText(text)
+
+    def set_group_size(self, size: int) -> None:
+        """Update filename caption with grouped set size."""
+        bounded = max(1, size)
+        self._group_size = bounded
+        if bounded > 1:
+            self.name_label.setText(f"{self.image_path.name}\n[{bounded} in set]")
+            return
+        self.name_label.setText(self.image_path.name)
 
     def set_selected(self, selected: bool) -> None:
         """Apply selected or normal tile styling."""
@@ -123,6 +134,7 @@ class SourcePanel(QWidget):
 
     photo_selected = Signal(object)
     folder_selected = Signal(object)
+    thumbnail_loaded = Signal(object)
 
     def __init__(
         self,
@@ -138,6 +150,9 @@ class SourcePanel(QWidget):
         self._thumb_tiles: dict[str, ThumbnailTile] = {}
         self._selected_path: Path | None = None
         self._current_folder: Path = source_dir
+        self._current_image_paths: list[Path] = []
+        self._group_sizes: dict[Path, int] = {}
+        self._thumbnail_pixmaps: dict[Path, QPixmap] = {}
         self._skipped_paths: set[Path] = set()
         self._active_thumb_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
         self._build_ui()
@@ -157,6 +172,11 @@ class SourcePanel(QWidget):
     def current_folder(self) -> Path:
         """Return current folder shown in the thumbnail grid."""
         return self._current_folder
+
+    @property
+    def current_image_paths(self) -> list[Path]:
+        """Return image paths currently displayed in the thumbnail grid."""
+        return list(self._current_image_paths)
 
     def _build_ui(self) -> None:
         panel = QFrame()
@@ -272,14 +292,17 @@ class SourcePanel(QWidget):
     def _load_folder_images(self, folder_path: Path) -> None:
         """Build thumbnail tiles and start background image decoding."""
         self._current_folder = folder_path
-        self.folder_selected.emit(folder_path)
         self._thumb_request_id += 1
         request_id = self._thumb_request_id
         self._selected_path = None
         self._thumb_tiles.clear()
+        self._group_sizes = {}
+        self._thumbnail_pixmaps = {}
         self._clear_grid()
 
         image_paths = self._find_supported_images(folder_path)
+        self._current_image_paths = image_paths
+        self.folder_selected.emit(folder_path)
         self.file_count_label.setText(f"{len(image_paths)} files in {folder_path.name}")
 
         if not image_paths:
@@ -294,6 +317,7 @@ class SourcePanel(QWidget):
             row = index // column_count
             col = index % column_count
             tile = ThumbnailTile(image_path=image_path)
+            tile.set_group_size(self._group_sizes.get(image_path, 1))
             tile.clicked.connect(self._on_tile_clicked)
             self._thumb_tiles[str(image_path)] = tile
             self.thumb_grid.addWidget(tile, row, col)
@@ -362,7 +386,10 @@ class SourcePanel(QWidget):
 
         pixmap = QPixmap()
         pixmap.loadFromData(data, "PNG")
+        path_obj = Path(image_path)
+        self._thumbnail_pixmaps[path_obj] = pixmap
         tile.set_thumbnail(pixmap)
+        self.thumbnail_loaded.emit(path_obj)
 
     def _on_thumbnail_failed(
         self,
@@ -398,6 +425,26 @@ class SourcePanel(QWidget):
     def _finish_thumb_job(self, job_id: int) -> None:
         """Release references for completed thumbnail tasks."""
         self._active_thumb_jobs.pop(job_id, None)
+
+    def set_group_sizes(self, group_sizes: dict[Path, int]) -> None:
+        """Apply grouped set-size hints to current thumbnail captions."""
+        self._group_sizes = dict(group_sizes)
+        for path_text, tile in self._thumb_tiles.items():
+            tile.set_group_size(self._group_sizes.get(Path(path_text), 1))
+
+    def select_path(self, image_path: Path, *, emit_signal: bool = True) -> bool:
+        """Select a file tile programmatically when it exists in current grid."""
+        key = str(image_path)
+        if key not in self._thumb_tiles:
+            return False
+        self._set_selected_path(image_path)
+        if emit_signal:
+            self.photo_selected.emit(image_path)
+        return True
+
+    def thumbnail_for_path(self, image_path: Path) -> QPixmap | None:
+        """Return loaded thumbnail pixmap for a given image path when available."""
+        return self._thumbnail_pixmaps.get(image_path)
 
     def mark_skipped(self, image_path: Path) -> None:
         """Hide a file from the current session without touching disk."""

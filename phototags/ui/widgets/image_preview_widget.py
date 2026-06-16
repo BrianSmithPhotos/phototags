@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtGui import QPixmap
-from PySide6.QtCore import Qt
+from functools import partial
+from pathlib import Path
+
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -21,11 +24,14 @@ from phototags.ui.styles import ACCENT_CYAN, BROWN_TEXT, DARK_TEAL, PANEL_BACKGR
 class ImagePreviewWidget(QWidget):
     """Center panel showing selected image preview and actions."""
 
+    variant_selected = Signal(object)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._base_pixmap: QPixmap | None = None
         self._setting_zoom_programmatically = False
         self._auto_fit_on_resize = True
+        self._variant_buttons: list[QPushButton] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -79,6 +85,37 @@ class ImagePreviewWidget(QWidget):
 
         layout.addLayout(zoom_row)
 
+        variant_heading_row = QHBoxLayout()
+        variant_heading_row.setSpacing(8)
+
+        self.variant_title = QLabel("Capture Set")
+        self.variant_title.setObjectName("variantTitle")
+        variant_heading_row.addWidget(self.variant_title)
+
+        self.variant_status = QLabel("1 file")
+        self.variant_status.setObjectName("variantStatus")
+        variant_heading_row.addWidget(self.variant_status)
+        variant_heading_row.addStretch(1)
+
+        layout.addLayout(variant_heading_row)
+
+        self.variant_scroll = QScrollArea()
+        self.variant_scroll.setWidgetResizable(True)
+        self.variant_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.variant_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.variant_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.variant_scroll.setMinimumHeight(52)
+        self.variant_scroll.setMaximumHeight(52)
+
+        self.variant_container = QWidget()
+        self.variant_layout = QHBoxLayout(self.variant_container)
+        self.variant_layout.setContentsMargins(0, 0, 0, 0)
+        self.variant_layout.setSpacing(6)
+        self.variant_layout.addStretch(1)
+
+        self.variant_scroll.setWidget(self.variant_container)
+        layout.addWidget(self.variant_scroll)
+
         self.delete_button = QPushButton("Delete (Cmd+Backspace)")
         self.delete_button.setEnabled(False)
         layout.addWidget(self.delete_button)
@@ -100,6 +137,28 @@ class ImagePreviewWidget(QWidget):
                 border: 1px dashed {ACCENT_CYAN};
                 border-radius: 6px;
                 background: white;
+            }}
+            QLabel#variantTitle {{
+                color: {DARK_TEAL};
+                font-weight: 600;
+                font-size: 12px;
+            }}
+            QLabel#variantStatus {{
+                color: {BROWN_TEXT};
+                font-size: 11px;
+            }}
+            QPushButton#variantButton {{
+                background: #efe8e2;
+                color: {BROWN_TEXT};
+                border: 1px solid #d8cdc4;
+                border-radius: 6px;
+                padding: 2px;
+                font-weight: 500;
+            }}
+            QPushButton#variantButton:checked {{
+                background: #dff7f6;
+                border: 1px solid {ACCENT_CYAN};
+                color: #2e4746;
             }}
             QLabel, QSlider {{
                 color: {BROWN_TEXT};
@@ -138,6 +197,52 @@ class ImagePreviewWidget(QWidget):
         self._auto_fit_on_resize = True
         self.fit_to_view()
 
+    def set_variants(
+        self,
+        variant_paths: list[Path],
+        selected_path: Path | None,
+        thumbnails: dict[Path, QPixmap | None] | None = None,
+    ) -> None:
+        """Render capture-set variant thumbnails for quick in-group switching."""
+        self._clear_variant_buttons()
+        thumb_map = thumbnails or {}
+        if not variant_paths:
+            self.variant_status.setText("No files")
+            self.variant_layout.addStretch(1)
+            return
+
+        selected_index = 1
+        if selected_path is not None and selected_path in variant_paths:
+            selected_index = variant_paths.index(selected_path) + 1
+
+        if len(variant_paths) == 1:
+            self.variant_status.setText("1 file")
+        else:
+            self.variant_status.setText(f"{selected_index}/{len(variant_paths)} selected")
+
+        for path in variant_paths:
+            button = QPushButton("")
+            button.setObjectName("variantButton")
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setChecked(selected_path is not None and path == selected_path)
+            button.setFixedSize(78, 56)
+            button.setToolTip(path.name)
+
+            thumb = thumb_map.get(path)
+            if thumb is not None and not thumb.isNull():
+                button.setIcon(QIcon(thumb))
+                button.setIconSize(QSize(66, 44))
+            else:
+                suffix = path.suffix.upper().replace(".", "") or "IMG"
+                button.setText(suffix)
+
+            button.clicked.connect(partial(self._on_variant_clicked, path))
+            self.variant_layout.addWidget(button)
+            self._variant_buttons.append(button)
+
+        self.variant_layout.addStretch(1)
+
     def clear_preview(self, message: str = "Select a photo to preview") -> None:
         """Clear current image preview and show message."""
         self._base_pixmap = None
@@ -149,6 +254,7 @@ class ImagePreviewWidget(QWidget):
         self.preview_label.setPixmap(QPixmap())
         self.preview_label.setText(message)
         self.preview_label.adjustSize()
+        self.set_variants([], None)
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         """Re-apply scaling when panel is resized."""
@@ -163,6 +269,19 @@ class ImagePreviewWidget(QWidget):
         if not self._setting_zoom_programmatically:
             self._auto_fit_on_resize = False
         self._apply_zoom()
+
+    def _on_variant_clicked(self, image_path: Path) -> None:
+        """Emit selected variant path for parent window routing."""
+        self.variant_selected.emit(image_path)
+
+    def _clear_variant_buttons(self) -> None:
+        """Remove existing variant controls from strip."""
+        while self.variant_layout.count() > 0:
+            item = self.variant_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._variant_buttons.clear()
 
     def _apply_zoom(self) -> None:
         """Scale current pixmap to slider-selected zoom."""
