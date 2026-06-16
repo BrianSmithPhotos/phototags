@@ -237,6 +237,7 @@ class MainWindow(QMainWindow):
             focal_length=ui_data.focal_length,
             focus_distance=ui_data.focus_distance,
             captured_at=ui_data.captured_at_display,
+            iso=ui_data.iso,
         )
         self._current_exif_ui_data = ui_data
         self.metadata_panel.set_exif_dump(dump_text)
@@ -455,6 +456,7 @@ class MainWindow(QMainWindow):
             f"focal_length={data.focal_length}",
             f"focus_distance={data.focus_distance}",
             f"captured_at={data.captured_at_display}",
+            f"iso={data.iso}",
         ]
         return "; ".join(part for part in parts if part and not part.endswith("="))
 

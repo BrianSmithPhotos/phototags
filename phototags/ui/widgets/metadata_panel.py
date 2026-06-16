@@ -6,10 +6,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
+    QGridLayout,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -21,8 +22,13 @@ from phototags.ui.styles import ACCENT_CYAN, BROWN_TEXT, DARK_TEAL, ORANGE_PRIMA
 class MetadataPanel(QWidget):
     """Right panel for metadata, rename preview, and process action."""
 
+    TECHNICAL_WIDE_VALUE_WIDTH = 360
+    TECHNICAL_VALUE_HEIGHT = 26
+    PANEL_FIXED_WIDTH = TECHNICAL_WIDE_VALUE_WIDTH + 160
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._last_exif_dump = ""
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -36,6 +42,7 @@ class MetadataPanel(QWidget):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+        self.setFixedWidth(self.PANEL_FIXED_WIDTH)
 
         title = QLabel("Metadata & Actions")
         title.setObjectName("panelTitle")
@@ -88,38 +95,83 @@ class MetadataPanel(QWidget):
         technical_heading.setObjectName("subHeading")
         layout.addWidget(technical_heading)
 
-        technical_form = QFormLayout()
-        technical_form.setSpacing(6)
-        technical_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        technical_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        technical_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        technical_form.setHorizontalSpacing(10)
+        technical_grid = QGridLayout()
+        technical_grid.setContentsMargins(0, 0, 0, 0)
+        technical_grid.setHorizontalSpacing(8)
+        technical_grid.setVerticalSpacing(5)
+        technical_grid.setColumnStretch(2, 3)
+        technical_grid.setColumnStretch(5, 2)
 
-        self.camera_value = QLabel("")
-        self.camera_value.setObjectName("metaValue")
-        self.camera_value.setMinimumWidth(360)
-        self.lens_type_value = QLabel("")
-        self.lens_type_value.setObjectName("metaValue")
-        self.lens_type_value.setMinimumWidth(360)
-        self.aperture_value = QLabel("")
-        self.aperture_value.setObjectName("metaValue")
-        self.shutter_speed_value = QLabel("")
-        self.shutter_speed_value.setObjectName("metaValue")
-        self.focal_length_value = QLabel("")
-        self.focal_length_value.setObjectName("metaValue")
-        self.focus_distance_value = QLabel("")
-        self.focus_distance_value.setObjectName("metaValue")
-        self.captured_at_value = QLabel("")
-        self.captured_at_value.setObjectName("metaValue")
+        self.camera_value = self._create_meta_value_label(self.TECHNICAL_WIDE_VALUE_WIDTH)
+        self.lens_type_value = self._create_meta_value_label(self.TECHNICAL_WIDE_VALUE_WIDTH)
+        self._add_technical_field(
+            technical_grid,
+            row=0,
+            start_column=0,
+            label_text="Camera",
+            value_label=self.camera_value,
+            value_span=4,
+        )
+        self._add_technical_field(
+            technical_grid,
+            row=1,
+            start_column=0,
+            label_text="Lens Type",
+            value_label=self.lens_type_value,
+            value_span=4,
+        )
 
-        technical_form.addRow("Camera", self.camera_value)
-        technical_form.addRow("Lens Type", self.lens_type_value)
-        technical_form.addRow("Aperture", self.aperture_value)
-        technical_form.addRow("Shutter Speed", self.shutter_speed_value)
-        technical_form.addRow("Focal Length", self.focal_length_value)
-        technical_form.addRow("Focus Distance", self.focus_distance_value)
-        technical_form.addRow("Captured At", self.captured_at_value)
-        layout.addLayout(technical_form)
+        self.aperture_value = self._create_meta_value_label()
+        self.shutter_speed_value = self._create_meta_value_label()
+        self._add_technical_field(
+            technical_grid,
+            row=2,
+            start_column=0,
+            label_text="Aperture",
+            value_label=self.aperture_value,
+        )
+        self._add_technical_field(
+            technical_grid,
+            row=2,
+            start_column=3,
+            label_text="Shutter Speed",
+            value_label=self.shutter_speed_value,
+        )
+
+        self.focal_length_value = self._create_meta_value_label()
+        self.focus_distance_value = self._create_meta_value_label()
+        self._add_technical_field(
+            technical_grid,
+            row=3,
+            start_column=0,
+            label_text="Focal Length",
+            value_label=self.focal_length_value,
+        )
+        self._add_technical_field(
+            technical_grid,
+            row=3,
+            start_column=3,
+            label_text="Focus Distance",
+            value_label=self.focus_distance_value,
+        )
+
+        self.captured_at_value = self._create_meta_value_label()
+        self.iso_value = self._create_meta_value_label()
+        self._add_technical_field(
+            technical_grid,
+            row=4,
+            start_column=0,
+            label_text="Captured At",
+            value_label=self.captured_at_value,
+        )
+        self._add_technical_field(
+            technical_grid,
+            row=4,
+            start_column=3,
+            label_text="ISO",
+            value_label=self.iso_value,
+        )
+        layout.addLayout(technical_grid)
 
         rename_heading = QLabel("Rename Preview")
         rename_heading.setObjectName("subHeading")
@@ -149,19 +201,7 @@ class MetadataPanel(QWidget):
         self.save_status = QLabel("")
         self.save_status.setObjectName("statusLabel")
         layout.addWidget(self.save_status)
-
-        debug_heading = QLabel("EXIF Dump (Debug)")
-        debug_heading.setObjectName("subHeading")
-        layout.addWidget(debug_heading)
-
-        self.exif_dump_view = QPlainTextEdit()
-        self.exif_dump_view.setReadOnly(True)
-        self.exif_dump_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.exif_dump_view.setMinimumHeight(220)
-        self.exif_dump_view.setPlaceholderText(
-            "Full EXIF JSON dump for selected image appears here."
-        )
-        layout.addWidget(self.exif_dump_view, 1)
+        layout.addStretch(1)
 
         self.setStyleSheet(
             f"""
@@ -184,6 +224,14 @@ class MetadataPanel(QWidget):
                 color: {BROWN_TEXT};
                 font-size: 11px;
             }}
+            QLabel#technicalLabel {{
+                color: {BROWN_TEXT};
+                font-size: 11px;
+            }}
+            QLabel#technicalColon {{
+                color: {BROWN_TEXT};
+                font-size: 11px;
+            }}
             QLabel, QLineEdit, QTextEdit {{
                 color: {BROWN_TEXT};
                 font-size: 12px;
@@ -191,15 +239,7 @@ class MetadataPanel(QWidget):
             QLabel#metaValue {{
                 color: {BROWN_TEXT};
                 font-size: 12px;
-                background: #f6f3f1;
-                border: 1px solid #dfd8d1;
-                border-radius: 5px;
-                padding: 4px 6px;
-            }}
-            QPlainTextEdit {{
-                color: {BROWN_TEXT};
-                font-size: 11px;
-                font-family: Menlo, Monaco, monospace;
+                padding: 0px;
             }}
             QLabel#statusLabel {{
                 color: {BROWN_TEXT};
@@ -219,6 +259,42 @@ class MetadataPanel(QWidget):
             """
         )
 
+    def _create_meta_value_label(self, fixed_width: int | None = None) -> QLabel:
+        """Create a fixed-height read-only metadata value label."""
+        label = QLabel("")
+        label.setObjectName("metaValue")
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        label.setMinimumHeight(20)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if fixed_width is not None:
+            label.setMinimumWidth(fixed_width)
+        return label
+
+    def _add_technical_field(
+        self,
+        grid: QGridLayout,
+        *,
+        row: int,
+        start_column: int,
+        label_text: str,
+        value_label: QLabel,
+        value_span: int = 1,
+    ) -> None:
+        """Add one technical metadata field to the compact aligned grid."""
+        label = QLabel(label_text)
+        label.setObjectName("technicalLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        colon = QLabel(":")
+        colon.setObjectName("technicalColon")
+        colon.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        value_label.setMinimumWidth(max(88, value_label.minimumWidth()))
+
+        grid.addWidget(label, row, start_column)
+        grid.addWidget(colon, row, start_column + 1)
+        grid.addWidget(value_label, row, start_column + 2, 1, value_span)
+
     def set_metadata_fields(
         self,
         *,
@@ -232,6 +308,7 @@ class MetadataPanel(QWidget):
         focal_length: str,
         focus_distance: str,
         captured_at: str,
+        iso: str,
     ) -> None:
         """Populate editable and read-only metadata fields."""
         self.title_edit.setPlainText(title)
@@ -244,13 +321,14 @@ class MetadataPanel(QWidget):
         self.focal_length_value.setText(focal_length)
         self.focus_distance_value.setText(focus_distance)
         self.captured_at_value.setText(captured_at)
+        self.iso_value.setText(iso)
 
     def set_exif_dump(self, dump_text: str) -> None:
-        """Populate full EXIF debug dump."""
-        self.exif_dump_view.setPlainText(dump_text)
+        """Store EXIF dump text for potential future debug surfaces."""
+        self._last_exif_dump = dump_text
 
     def clear_metadata(self, message: str = "") -> None:
-        """Clear all metadata fields and debug text."""
+        """Clear all metadata fields."""
         self.set_metadata_fields(
             title="",
             description="",
@@ -262,8 +340,9 @@ class MetadataPanel(QWidget):
             focal_length="",
             focus_distance="",
             captured_at="",
+            iso="",
         )
-        self.exif_dump_view.setPlainText(message)
+        self._last_exif_dump = message
         self.clear_ai_suggestions()
         self.set_suggest_button_enabled(False)
         self.set_save_button_enabled(False)

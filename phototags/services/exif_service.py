@@ -29,6 +29,7 @@ class ExifUiData:
     focus_distance: str
     captured_at: str
     captured_at_display: str
+    iso: str
     art_filter_token: str
 
 
@@ -188,6 +189,15 @@ class ExifService:
                         "QuickTime:CreateDate",
                     ),
                 )
+            ),
+            iso=self._first_text(
+                metadata,
+                (
+                    "ExifIFD:ISO",
+                    "EXIF:ISO",
+                    "MakerNotes:ISO",
+                    "Composite:ISO",
+                ),
             ),
             art_filter_token=self._art_filter_token(metadata),
         )
