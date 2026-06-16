@@ -103,6 +103,8 @@ class MetadataPanel(QWidget):
         self.lens_type_value.setMinimumWidth(360)
         self.aperture_value = QLabel("")
         self.aperture_value.setObjectName("metaValue")
+        self.shutter_speed_value = QLabel("")
+        self.shutter_speed_value.setObjectName("metaValue")
         self.focal_length_value = QLabel("")
         self.focal_length_value.setObjectName("metaValue")
         self.focus_distance_value = QLabel("")
@@ -113,6 +115,7 @@ class MetadataPanel(QWidget):
         technical_form.addRow("Camera", self.camera_value)
         technical_form.addRow("Lens Type", self.lens_type_value)
         technical_form.addRow("Aperture", self.aperture_value)
+        technical_form.addRow("Shutter Speed", self.shutter_speed_value)
         technical_form.addRow("Focal Length", self.focal_length_value)
         technical_form.addRow("Focus Distance", self.focus_distance_value)
         technical_form.addRow("Captured At", self.captured_at_value)
@@ -225,6 +228,7 @@ class MetadataPanel(QWidget):
         camera: str,
         lens_type: str,
         aperture: str,
+        shutter_speed: str,
         focal_length: str,
         focus_distance: str,
         captured_at: str,
@@ -236,6 +240,7 @@ class MetadataPanel(QWidget):
         self.camera_value.setText(camera)
         self.lens_type_value.setText(lens_type)
         self.aperture_value.setText(aperture)
+        self.shutter_speed_value.setText(shutter_speed)
         self.focal_length_value.setText(focal_length)
         self.focus_distance_value.setText(focus_distance)
         self.captured_at_value.setText(captured_at)
@@ -253,6 +258,7 @@ class MetadataPanel(QWidget):
             camera="",
             lens_type="",
             aperture="",
+            shutter_speed="",
             focal_length="",
             focus_distance="",
             captured_at="",

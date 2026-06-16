@@ -44,7 +44,7 @@
 - Added async EXIF loading worker (`phototags/workers/exif_loader.py`) to keep the UI responsive while selecting files.
 - Added temporary full EXIF debug viewer in lower-right panel (`QPlainTextEdit`, scrollable, no-wrap).
 - Debug viewer is intentionally temporary and will be removed once final metadata fields are selected for dedicated UI controls.
-- Added read-only technical fields for camera (make + model), lens type, aperture, focal length, focus distance, and capture date-time.
+- Added read-only technical fields for camera (make + model), lens type, aperture, shutter speed, focal length, focus distance, and capture date-time.
 - Capture date-time display is formatted in a longer human-readable style in UI, while raw EXIF date-time is retained for filename generation logic.
 - Verified on `/Volumes/OM SYSTEM/DCIM/105OMSYS`:
   - EXIF fields populate from selection.

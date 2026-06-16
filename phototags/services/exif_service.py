@@ -24,6 +24,7 @@ class ExifUiData:
     lens_type: str
     lens_model: str
     aperture: str
+    shutter_speed: str
     focal_length: str
     focus_distance: str
     captured_at: str
@@ -141,6 +142,14 @@ class ExifService:
                         "EXIF:FNumber",
                     ),
                 )
+            ),
+            shutter_speed=self._first_text(
+                metadata,
+                (
+                    "Composite:ShutterSpeed",
+                    "ExifIFD:ExposureTime",
+                    "EXIF:ExposureTime",
+                ),
             ),
             focal_length=self._first_text(
                 metadata,
