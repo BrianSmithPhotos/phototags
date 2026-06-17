@@ -24,6 +24,8 @@ class AiSuggestPayload:
     suggestion: AiSuggestionResult
     base_keywords_by_path: dict[str, str]
     art_filter_by_path: dict[str, str]
+    camera_by_path: dict[str, str]
+    lens_by_path: dict[str, str]
 
 
 class AiSuggestSignals(QObject):
@@ -74,20 +76,30 @@ class AiSuggestTask(QRunnable):
             )
             base_keywords_by_path: dict[str, str] = {}
             art_filter_by_path: dict[str, str] = {}
+            camera_by_path: dict[str, str] = {}
+            lens_by_path: dict[str, str] = {}
             for target_path in self.target_paths:
                 key = str(target_path)
                 draft_keywords = self.existing_keywords_by_path.get(key, "").strip()
                 if draft_keywords:
                     base_keywords_by_path[key] = draft_keywords
-                    art_filter_by_path[key] = ""
+                    try:
+                        _, art_filter, camera_model, lens_model = self._read_keywords_art_filter(target_path)
+                    except (OSError, ValueError, ExifToolReadError, RuntimeError):
+                        art_filter, camera_model, lens_model = "", "", ""
+                    art_filter_by_path[key] = art_filter
+                    camera_by_path[key] = camera_model
+                    lens_by_path[key] = lens_model
                     continue
 
                 try:
-                    base_keywords, art_filter = self._read_keywords_art_filter(target_path)
+                    base_keywords, art_filter, camera_model, lens_model = self._read_keywords_art_filter(target_path)
                 except (OSError, ValueError, ExifToolReadError, RuntimeError):
-                    base_keywords, art_filter = "", ""
+                    base_keywords, art_filter, camera_model, lens_model = "", "", "", ""
                 base_keywords_by_path[key] = base_keywords
                 art_filter_by_path[key] = art_filter
+                camera_by_path[key] = camera_model
+                lens_by_path[key] = lens_model
 
             payload = AiSuggestPayload(
                 representative_path=str(self.representative_path),
@@ -95,6 +107,8 @@ class AiSuggestTask(QRunnable):
                 suggestion=suggestion,
                 base_keywords_by_path=base_keywords_by_path,
                 art_filter_by_path=art_filter_by_path,
+                camera_by_path=camera_by_path,
+                lens_by_path=lens_by_path,
             )
             self.signals.suggested.emit(payload)
         except (OSError, ValueError, AiSuggestionError, RuntimeError) as exc:
@@ -103,8 +117,8 @@ class AiSuggestTask(QRunnable):
             except RuntimeError:
                 return
 
-    def _read_keywords_art_filter(self, image_path: Path) -> tuple[str, str]:
-        """Read existing keywords and art filter for one target image."""
+    def _read_keywords_art_filter(self, image_path: Path) -> tuple[str, str, str, str]:
+        """Read existing keywords and auto-keyword tokens for one target image."""
         metadata = self.exif_service.read_full_metadata(image_path)
         ui_data = self.exif_service.map_for_ui(metadata)
-        return ui_data.keywords, ui_data.art_filter_token
+        return ui_data.keywords, ui_data.art_filter_token, ui_data.camera_model, ui_data.lens_model

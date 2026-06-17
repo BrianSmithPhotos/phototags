@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -186,9 +187,29 @@ class MetadataPanel(QWidget):
         self.save_button.setEnabled(False)
         layout.addWidget(self.save_button)
 
-        self.process_button = QPushButton("Process & Move")
-        self.process_button.setEnabled(False)
-        layout.addWidget(self.process_button)
+        process_heading = QLabel("Process & Move")
+        process_heading.setObjectName("subHeading")
+        layout.addWidget(process_heading)
+
+        process_row = QHBoxLayout()
+        process_row.setSpacing(6)
+
+        self.process_single_button = QPushButton("Single Image")
+        self.process_single_button.setEnabled(False)
+        self.process_single_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        process_row.addWidget(self.process_single_button, 1)
+
+        self.process_set_button = QPushButton("Capture Set")
+        self.process_set_button.setEnabled(False)
+        self.process_set_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        process_row.addWidget(self.process_set_button, 1)
+
+        self.process_session_button = QPushButton("Session")
+        self.process_session_button.setEnabled(False)
+        self.process_session_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        process_row.addWidget(self.process_session_button, 1)
+
+        layout.addLayout(process_row)
 
         self.save_status = QLabel("")
         self.save_status.setObjectName("statusLabel")
@@ -338,7 +359,7 @@ class MetadataPanel(QWidget):
         self.clear_ai_suggestions()
         self.set_suggest_button_enabled(False)
         self.set_save_button_enabled(False)
-        self.set_process_button_enabled(False)
+        self.set_process_buttons_enabled(False)
         self.set_save_status("")
 
     def description_text(self) -> str:
@@ -353,9 +374,11 @@ class MetadataPanel(QWidget):
         """Enable/disable metadata save action."""
         self.save_button.setEnabled(enabled)
 
-    def set_process_button_enabled(self, enabled: bool) -> None:
-        """Enable/disable process action."""
-        self.process_button.setEnabled(enabled)
+    def set_process_buttons_enabled(self, enabled: bool) -> None:
+        """Enable/disable all process action buttons."""
+        self.process_single_button.setEnabled(enabled)
+        self.process_set_button.setEnabled(enabled)
+        self.process_session_button.setEnabled(enabled)
 
     def set_suggest_button_enabled(self, enabled: bool) -> None:
         """Enable/disable AI suggestion action."""

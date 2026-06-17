@@ -15,7 +15,7 @@ from phototags.services.ai_suggestion_service import OLLAMA_DEFAULT_MODEL, AiSug
 from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
 from phototags.services.exif_service import ExifService, ExifUiData
 from phototags.services.metadata_write_service import MetadataWriteResult, MetadataWriteService
-from phototags.services.process_move_service import ProcessMoveResult, ProcessMoveService
+from phototags.services.process_move_service import ProcessMoveService
 from phototags.services.rename_service import RenameContext, RenameService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
@@ -25,7 +25,7 @@ from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 from phototags.workers.ai_suggester import AiSuggestPayload, AiSuggestSignals, AiSuggestTask
 from phototags.workers.metadata_writer import MetadataSaveSignals, MetadataSaveTask
-from phototags.workers.process_mover import ProcessMoveSignals, ProcessMoveTask
+from phototags.workers.process_batch_mover import ProcessBatchResult, ProcessBatchSignals, ProcessBatchTask
 
 PREVIEW_MAX_EDGE = 2800
 THUMBNAIL_WORKERS = 4
@@ -88,7 +88,7 @@ class MainWindow(QMainWindow):
         self._active_ai_jobs: dict[int, tuple[AiSuggestTask, AiSuggestSignals]] = {}
         self._process_request_id = 0
         self._process_job_id = 0
-        self._active_process_jobs: dict[int, tuple[ProcessMoveTask, ProcessMoveSignals]] = {}
+        self._active_process_jobs: dict[int, tuple[ProcessBatchTask, ProcessBatchSignals]] = {}
         self._ai_inflight = False
         self._process_inflight = False
         self._selected_image_path: Path | None = None
@@ -122,7 +122,9 @@ class MainWindow(QMainWindow):
         self.source_panel.thumbnail_loaded.connect(self._on_thumbnail_loaded)
         self.preview_panel.variant_selected.connect(self._on_variant_selected)
         self.metadata_panel.save_button.clicked.connect(self._on_save_metadata_clicked)
-        self.metadata_panel.process_button.clicked.connect(self._on_process_clicked)
+        self.metadata_panel.process_single_button.clicked.connect(self._on_process_single_clicked)
+        self.metadata_panel.process_set_button.clicked.connect(self._on_process_set_clicked)
+        self.metadata_panel.process_session_button.clicked.connect(self._on_process_session_clicked)
         self.metadata_panel.suggest_button.clicked.connect(self._on_ai_suggest_clicked)
         self.metadata_panel.location_edit.textChanged.connect(self._update_rename_preview)
         self.metadata_panel.description_edit.textChanged.connect(self._on_metadata_edited)
@@ -156,7 +158,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_rename_preview("")
             self.preview_panel.delete_button.setEnabled(False)
             self.metadata_panel.set_suggest_button_enabled(False)
-            self.metadata_panel.set_process_button_enabled(False)
+            self.metadata_panel.set_process_buttons_enabled(False)
             return
 
         self._preview_request_id += 1
@@ -295,12 +297,14 @@ class MainWindow(QMainWindow):
             return
         path_obj = Path(image_path)
         draft = self._metadata_drafts.get(path_obj)
-        default_keywords = self._keywords_with_art_filter(
-            ui_data.keywords,
+        keywords_source = draft.keywords if draft is not None else ui_data.keywords
+        keywords_text = self._keywords_with_auto_tokens(
+            keywords_source,
             ui_data.art_filter_token,
+            ui_data.camera_model,
+            ui_data.lens_model,
         )
         description_text = draft.description if draft is not None else ui_data.description
-        keywords_text = draft.keywords if draft is not None else default_keywords
 
         self._suppress_metadata_sync = True
         try:
@@ -321,11 +325,10 @@ class MainWindow(QMainWindow):
             self._suppress_metadata_sync = False
         self._current_exif_ui_data = ui_data
         self.metadata_panel.set_exif_dump(dump_text)
-        if draft is None:
-            self._metadata_drafts[path_obj] = MetadataDraft(
-                description=description_text,
-                keywords=keywords_text,
-            )
+        self._metadata_drafts[path_obj] = MetadataDraft(
+            description=description_text,
+            keywords=keywords_text,
+        )
         self._restore_metadata_action_controls()
         self._update_rename_preview()
 
@@ -406,7 +409,16 @@ class MainWindow(QMainWindow):
         self._sync_current_draft()
         image_path = self._selected_image_path
         description = self.metadata_panel.description_text()
-        keywords_text = self.metadata_panel.keywords_text()
+        keywords_text = self._keywords_with_current_auto_tokens(self.metadata_panel.keywords_text())
+        self._suppress_metadata_sync = True
+        try:
+            self.metadata_panel.keywords_edit.setPlainText(keywords_text)
+        finally:
+            self._suppress_metadata_sync = False
+        self._metadata_drafts[image_path] = MetadataDraft(
+            description=description,
+            keywords=keywords_text,
+        )
 
         self._metadata_write_request_id += 1
         request_id = self._metadata_write_request_id
@@ -509,7 +521,7 @@ class MainWindow(QMainWindow):
         self._ai_inflight = True
         self.metadata_panel.set_suggest_button_enabled(False)
         self.metadata_panel.set_save_button_enabled(False)
-        self.metadata_panel.set_process_button_enabled(False)
+        self.metadata_panel.set_process_buttons_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
         if len(target_paths) > 1:
             self.metadata_panel.set_ai_status(
@@ -553,7 +565,14 @@ class MainWindow(QMainWindow):
             path_obj = Path(path_text)
             base_keywords = payload.base_keywords_by_path.get(path_text, "")
             art_filter = payload.art_filter_by_path.get(path_text, "")
-            with_art_filter = self._keywords_with_art_filter(base_keywords, art_filter)
+            camera_model = payload.camera_by_path.get(path_text, "")
+            lens_model = payload.lens_by_path.get(path_text, "")
+            with_art_filter = self._keywords_with_auto_tokens(
+                base_keywords,
+                art_filter,
+                camera_model,
+                lens_model,
+            )
             merged_keywords = self._merge_keywords(
                 self._parse_keywords(with_art_filter),
                 payload.suggestion.keywords,
@@ -629,14 +648,30 @@ class MainWindow(QMainWindow):
             return selected_path, (selected_path,)
         return group.representative_path, tuple(group.members)
 
-    def _keywords_with_art_filter(self, keywords_text: str, art_filter_token: str) -> str:
-        """Append art filter token (when present) to comma-delimited keywords."""
+    def _keywords_with_auto_tokens(
+        self,
+        keywords_text: str,
+        art_filter_token: str,
+        camera_token: str,
+        lens_token: str,
+    ) -> str:
+        """Append art filter, camera, and lens tokens to comma-delimited keywords."""
         keywords = self._parse_keywords(keywords_text)
-        art_filter = art_filter_token.strip()
-        if not art_filter:
-            return ", ".join(keywords)
-        merged = self._merge_keywords(keywords, [art_filter])
+        auto_tokens = [art_filter_token.strip(), camera_token.strip(), lens_token.strip()]
+        merged = self._merge_keywords(keywords, [token for token in auto_tokens if token])
         return ", ".join(merged)
+
+    def _keywords_with_current_auto_tokens(self, keywords_text: str) -> str:
+        """Append current selection's auto tokens to keywords."""
+        data = self._current_exif_ui_data
+        if data is None:
+            return keywords_text
+        return self._keywords_with_auto_tokens(
+            keywords_text,
+            data.art_filter_token,
+            data.camera_model,
+            data.lens_model,
+        )
 
     def _restore_metadata_action_controls(self) -> None:
         """Restore right-panel action enabled states based on app state."""
@@ -644,7 +679,7 @@ class MainWindow(QMainWindow):
         allow_actions = has_selection and not self._process_inflight and not self._ai_inflight
         self.metadata_panel.set_suggest_button_enabled(allow_actions)
         self.metadata_panel.set_save_button_enabled(allow_actions)
-        self.metadata_panel.set_process_button_enabled(allow_actions)
+        self.metadata_panel.set_process_buttons_enabled(allow_actions)
         self.preview_panel.delete_button.setEnabled(allow_actions)
 
     def _capture_context(self) -> str:
@@ -681,29 +716,50 @@ class MainWindow(QMainWindow):
             merged.append(keyword)
         return merged
 
-    def _on_process_clicked(self) -> None:
-        """Copy selected file to destination tree and write metadata."""
-        if self._selected_image_path is None:
+    def _on_process_single_clicked(self) -> None:
+        """Process and copy only the currently selected image."""
+        selected = self._selected_image_path
+        if selected is None:
             self.metadata_panel.set_save_status("No file selected", is_error=True)
             return
+        self._start_process_scope("single image", [selected])
+
+    def _on_process_set_clicked(self) -> None:
+        """Process and copy all files in the current capture set."""
+        selected = self._selected_image_path
+        if selected is None:
+            self.metadata_panel.set_save_status("No file selected", is_error=True)
+            return
+        group = self._group_by_path.get(selected)
+        paths = list(group.members) if group is not None else [selected]
+        self._start_process_scope("capture set", paths)
+
+    def _on_process_session_clicked(self) -> None:
+        """Process and copy all remaining files in the current session view."""
+        paths = self.source_panel.current_image_paths
+        if not paths:
+            self.metadata_panel.set_save_status("No files available in current session", is_error=True)
+            return
+        self._start_process_scope("session", paths)
+
+    def _start_process_scope(self, scope_label: str, paths: list[Path]) -> None:
+        """Start one background batch process job for the requested scope."""
         if self._process_inflight:
             self.metadata_panel.set_save_status("Process already running...", is_error=True)
             return
         if self._ai_inflight:
             self.metadata_panel.set_save_status("AI suggestions running...", is_error=True)
             return
-
-        self._sync_current_draft()
-        proposed_filename = self.metadata_panel.rename_preview_text()
-        if not proposed_filename:
-            self.metadata_panel.set_save_status("No filename preview available", is_error=True)
+        unique_paths = self._dedupe_paths(paths)
+        if not unique_paths:
+            self.metadata_panel.set_save_status("No files to process", is_error=True)
             return
 
-        image_path = self._selected_image_path
-        captured_at = self._current_exif_ui_data.captured_at if self._current_exif_ui_data else ""
-        description = self.metadata_panel.description_text()
-        keywords_text = self.metadata_panel.keywords_text()
-        title = Path(proposed_filename).stem
+        self._sync_current_draft()
+        draft_snapshot = {
+            str(path): (draft.description, draft.keywords)
+            for path, draft in self._metadata_drafts.items()
+        }
 
         self._process_request_id += 1
         request_id = self._process_request_id
@@ -712,71 +768,94 @@ class MainWindow(QMainWindow):
 
         self._process_inflight = True
         self.metadata_panel.set_save_button_enabled(False)
-        self.metadata_panel.set_process_button_enabled(False)
+        self.metadata_panel.set_process_buttons_enabled(False)
         self.metadata_panel.set_suggest_button_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
-        self.metadata_panel.set_save_status("Processing and copying file...")
+        self.metadata_panel.set_save_status(
+            f"Processing {len(unique_paths)} file(s) for {scope_label}..."
+        )
 
-        signals = ProcessMoveSignals()
-        signals.completed.connect(partial(self._on_process_completed, request_id, job_id))
-        signals.failed.connect(partial(self._on_process_failed, request_id, job_id))
+        signals = ProcessBatchSignals()
+        signals.completed.connect(partial(self._on_process_batch_completed, request_id, job_id))
+        signals.failed.connect(partial(self._on_process_batch_failed, request_id, job_id))
 
-        task = ProcessMoveTask(
-            source_path=image_path,
+        task = ProcessBatchTask(
+            image_paths=tuple(unique_paths),
+            scope_label=scope_label,
+            location_text=self.metadata_panel.location_text(),
+            draft_by_path=draft_snapshot,
             destination_root=DESTINATION_ROOT,
-            proposed_filename=proposed_filename,
-            captured_at=captured_at,
-            title=title,
-            description=description,
-            keywords_text=keywords_text,
-            service=self._process_move_service,
+            exif_service=self._exif_service,
+            rename_service=self._rename_service,
+            process_move_service=self._process_move_service,
             signals=signals,
         )
         self._active_process_jobs[job_id] = (task, signals)
         self._process_pool.start(task)
 
-    def _on_process_completed(
+    def _on_process_batch_completed(
         self,
         request_id: int,
         job_id: int,
-        source_path: str,
-        result: ProcessMoveResult,
+        result: ProcessBatchResult,
     ) -> None:
-        """Handle successful process-and-copy completion."""
+        """Handle completion for a background batch process operation."""
         self._finish_process_job(job_id)
         if request_id != self._process_request_id:
             return
 
         self._process_inflight = False
-        self._suppress_metadata_sync = True
-        try:
-            self.metadata_panel.title_edit.setPlainText(result.metadata_result.title)
-            self.metadata_panel.description_edit.setPlainText(result.metadata_result.description)
-            self.metadata_panel.keywords_edit.setPlainText(", ".join(result.metadata_result.keywords))
-        finally:
-            self._suppress_metadata_sync = False
-        source_path_obj = Path(source_path)
-        self._metadata_drafts[source_path_obj] = MetadataDraft(
-            description=result.metadata_result.description,
-            keywords=", ".join(result.metadata_result.keywords),
-        )
-        self.source_panel.mark_skipped(Path(source_path))
-        self.metadata_panel.set_save_status(f"Copied to {result.destination_path}")
+        success_paths = [
+            Path(item.source_path)
+            for item in result.outcomes
+            if not item.error
+        ]
+        if success_paths:
+            self.source_panel.mark_skipped_many(success_paths)
 
-    def _on_process_failed(
+        self._restore_metadata_action_controls()
+        if result.failure_count == 0:
+            self.metadata_panel.set_save_status(
+                f"Processed {result.success_count}/{result.total_count} files for {result.scope_label}"
+            )
+            return
+
+        first_failure = next((item for item in result.outcomes if item.error), None)
+        failure_hint = ""
+        if first_failure is not None:
+            failure_hint = f" First failure: {Path(first_failure.source_path).name}."
+        self.metadata_panel.set_save_status(
+            (
+                f"Processed {result.success_count}/{result.total_count} for {result.scope_label}; "
+                f"{result.failure_count} failed.{failure_hint}"
+            ),
+            is_error=True,
+        )
+
+    def _on_process_batch_failed(
         self,
         request_id: int,
         job_id: int,
-        _source_path: str,
         error: str,
     ) -> None:
-        """Show process-and-copy errors and restore controls."""
+        """Handle fatal batch process errors."""
         self._finish_process_job(job_id)
         if request_id != self._process_request_id:
             return
         self._process_inflight = False
         self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status(f"Process failed: {error}", is_error=True)
+
+    def _dedupe_paths(self, paths: list[Path]) -> list[Path]:
+        """Return unique paths preserving original order."""
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for path in paths:
+            if path in seen:
+                continue
+            seen.add(path)
+            unique.append(path)
+        return unique
 
     def _on_skip_selected(self) -> None:
         """Skip selected file for this session without deleting from SD."""

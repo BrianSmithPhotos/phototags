@@ -451,6 +451,13 @@ class SourcePanel(QWidget):
         self._skipped_paths.add(image_path)
         self.reload_current_folder()
 
+    def mark_skipped_many(self, image_paths: list[Path]) -> None:
+        """Hide many files from the current session without touching disk."""
+        if not image_paths:
+            return
+        self._skipped_paths.update(image_paths)
+        self.reload_current_folder()
+
     def reload_current_folder(self) -> None:
         """Reload thumbnails for the current folder path."""
         self._load_folder_images(self._current_folder)

@@ -111,14 +111,19 @@
 
 ## Part 6 - File handling - move to Mac storage, or deletion options
 
-- [x] Implement `Process & Move`: copy selected file to destination structure using rename preview, verify copy, then write metadata to copied file.
-  - Test: destination file exists, checksum matches source, metadata is written on copied file.
+- [x] Implement split `Process & Move` scopes (`Single Image`, `Capture Set`, `Session`) with background batch copy/verify/write flow.
+  - Test: each scope copies the expected file set, verifies checksum, and writes metadata on copied files.
 - [x] Implement `Delete/Skip` behavior for SD workflow: remove file from current app session queue only (no disk delete).
   - Test: selected image disappears from thumbnail queue and source file remains on SD card.
 
 ### Part 6 implementation notes (completed)
 
 - Destination root is fixed to `/Users/bsmi067/Pictures/DxO`.
+- `Process & Move` is now split into three explicit actions in the metadata panel:
+  - `Single Image`: process only the selected file.
+  - `Capture Set`: process all members of the selected capture group.
+  - `Session`: process all remaining files currently loaded in the session/folder view.
+- Added background batch worker `ProcessBatchTask` (`phototags/workers/process_batch_mover.py`) to handle all process scopes without blocking the UI.
 - Destination folders are derived from capture date:
   - month folder format: `<month-number> <MonthName>` (example: `6 June`)
   - day folder format: `DD` (example: `01`)
@@ -129,6 +134,9 @@
   - no source deletion is performed after copy
   - copied file is verified by size and SHA-256 checksum before success is reported
   - metadata write is applied to the copied destination file
+- Batch process completion behavior:
+  - successful files are auto-skipped from the current source session queue
+  - partial-failure status is surfaced in UI with first failing source file hint
 - `Delete (Cmd+Backspace)` now means "skip/don't copy" for this session; it does not move files to Trash or modify SD content.
 
 ## Phase 2
@@ -180,7 +188,8 @@
 - Startup wiring fix: initial folder grouping is now explicitly triggered after signal connections in `MainWindow`, so first-load folders are grouped without requiring a manual folder change.
 - Added optional grouping debug output controlled by `PHOTOTAGS_GROUP_DEBUG` (`1/true/yes`):
   - prints computed group strategy, key text, and group members to stdout for inspection.
-- Save/Process actions remain file-level; AI suggestion apply now runs group-level and writes editable per-file drafts.
+- AI suggestion apply runs group-level and writes editable per-file drafts.
+- Process actions now support scoped batch execution (`Single Image`, `Capture Set`, `Session`) while preserving per-file editable draft metadata.
 
 ## Ollama models - which are best for image description, segmentation, bird identification - local machine 128GB M1 Unified memory
 
@@ -207,13 +216,14 @@
 - Added local Ollama suggestion flow (`Suggest Description + Keywords`) using a background worker.
 - AI now runs at capture-group level and applies to all group members as individual editable drafts.
 - Description and keywords are both written directly into the editable fields; separate suggested-keywords UI was removed to reclaim right-panel space.
-- Art filter token is auto-added to keywords (when present) before AI keyword append.
+- Art filter, camera model, and lens model tokens are auto-added to keywords before AI keyword append.
 - Default Ollama model is now `qwen3.6:35b` and can still be overridden with `PHOTOTAGS_OLLAMA_MODEL`.
 - Added model capability pre-check (`vision` required) to prevent silent bad outputs when text-only models are selected.
 - Added two-pass fallback for difficult wildlife/botanical IDs:
   - pass 1 on representative full image
   - fallback pass on deterministic tighter crops when subject keywords are not reflected in description
   - merged result keeps keyword de-duplication and reports refinement debug status in UI.
+- Auto keyword tokens (art filter/camera/lens) are also enforced during save/process so copied outputs stay consistent with UI metadata rules.
 
 ### Suggested Ollama vision models to benchmark first (M1 Ultra 128GB)
 
@@ -261,18 +271,19 @@
 - [ ] Define photo-to-location matching strategy.
   - Test: known photo capture times resolve to nearest timeline point/visit with confidence labels.
 - [ ] Decide cache/persistence approach for timeline data.
-  - Test: repeat runs avoid full 78MB reparsing unless source file changed.
+  - Test: repeat runs avoid full `gps/Timeline.json` reparsing unless source file changed.
 - [ ] Define UI integration for location suggestions (non-destructive).
   - Test: location suggestion can prefill batch `Location` field and remain user-editable.
 
-### Timeline.json observations (current sample)
+### Timeline.json observations (trimmed active sample)
 
-- File size: ~78.6MB (`gps/Timeline.json`).
-- Segment count: `34,892` semantic segments.
-- Segment composition:
-  - `timelinePath`: `12,885` segments (`167,704` path points total)
-  - `visit`: `10,962` segments
-  - `activity`: `10,936` segments
+- Active file: `gps/Timeline.json` (trimmed to 2026+), size: ~23.4MB.
+- Backup full history file retained: `gps/Timeline_full_backup.json`, size: ~78.6MB.
+- Segment count (active file): `2,663` semantic segments.
+- Segment composition (active file):
+  - `timelinePath`: `1,324` segments (`12,855` path points total)
+  - `visit`: `655` segments
+  - `activity`: `676` segments
 - Coordinates are encoded as strings with degree symbols (example: `"47.5554554°, -122.0495129°"`), so parsing/normalization is required.
 - Time fields are ISO timestamps with offsets; some segments also include explicit `TimezoneUtcOffsetMinutes`.
 
