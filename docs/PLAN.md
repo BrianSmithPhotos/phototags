@@ -78,6 +78,16 @@ Implementation note:
 - [x] Prompt rules for subject specificity + scientific names where possible.
 - [x] Crop-refinement fallback when subject specificity likely missing.
 - [x] AI status reporting for refinement attempted/applied.
+- [x] Timeout-aware fallback chain:
+  - Primary request
+  - Retry with 50% center crop on timeout
+  - Request timing + payload-size logging for diagnostics
+- [x] Empty-response hardening:
+  - Broad response-content extraction fallbacks
+  - One automatic retry for empty-content responses
+  - Clearer user-facing failure path when content remains empty
+- [x] Capture-set apply robustness:
+  - AI apply now expands to full capture set when grouping finishes after AI request starts
 
 ## 3. Location Enrichment Completed
 
@@ -161,6 +171,7 @@ Use this when importing a new full-history timeline export.
 - [ ] With missing altitude and valid lat/lon, confirm `Lookup Altitude` fills altitude.
 - [ ] With auto lookup enabled and missing timeline altitude, confirm lookup auto-runs after apply.
 - [ ] Validate at least one known location against expected terrain/elevation.
+- [ ] Validate non-`GPS` timeline altitude samples (for example `WIFI`) against known terrain and note expected error envelope.
 
 ### Save/process output behavior
 
@@ -175,9 +186,20 @@ Use this when importing a new full-history timeline export.
 - [ ] Validate whether second-level grouping causes false merges in dense bursts.
 - [ ] Evaluate stronger grouping keys (camera serial + subseconds + exposure guards) only if needed after field testing.
 
-### AI benchmarking and prompt tuning
+### Altitude quality guardrails
 
-- [ ] Benchmark candidate local vision models for caption + taxonomy quality + speed.
+- [ ] Add optional altitude plausibility checks (for example soft warnings for extreme values and abrupt jumps within a short capture set).
+- [ ] Add a confidence tier for altitude source quality (`GPS` > inferred timeline > external lookup).
+- [ ] Add a "prefer lookup over unreliable timeline altitude" option for non-`GPS` source altitudes.
+
+### AI model quality and specialization
+
+- [ ] Run a model bake-off on representative wildlife/plant/location samples:
+  - Precision for bird/flower/animal identification
+  - Scientific-name usefulness
+  - Response consistency and latency
+- [ ] Compare at least one strong general vision model against one or more biology-focused/specialized candidates.
+- [ ] Define per-subject model recommendations (for example: default general model + optional specialist model for flora/fauna workflows).
 - [ ] Tune prompts for difficult bird/flower species and low-light scenes.
 
 ### Integration stretch goals
