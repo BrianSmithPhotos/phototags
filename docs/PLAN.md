@@ -267,57 +267,77 @@
 ## Location Enrichment (Planning Only) - Timeline.json
 
 - [ ] Define a location ingestion contract from `gps/Timeline.json`.
-  - Test: parser extracts normalized points + visits + activities with UTC timestamps and lat/lon floats.
+  - Test: parser extracts normalized `semanticSegments` + `rawSignals.position` records with UTC timestamps, lat/lon floats, and optional altitude.
 - [ ] Define photo-to-location matching strategy.
-  - Test: known photo capture times resolve to nearest timeline point/visit with confidence labels.
+  - Test: known photo capture times resolve to nearest timeline position sample and return GPS lat/lon/alt when a match exists.
 - [ ] Decide cache/persistence approach for timeline data.
-  - Test: repeat runs avoid full `gps/Timeline.json` reparsing unless source file changed.
+  - Test: importing a refreshed full-history `Timeline.json` upserts only new/changed normalized records into local storage.
 - [ ] Define UI integration for location suggestions (non-destructive).
-  - Test: location suggestion can prefill batch `Location` field and remain user-editable.
+  - Test: GPS suggestion can be applied or ignored independently, while batch `Location` remains manual session labeling.
 
 ### Timeline.json observations (trimmed active sample)
 
 - Active file: `gps/Timeline.json` (trimmed to 2026+), size: ~23.4MB.
 - Backup full history file retained: `gps/Timeline_full_backup.json`, size: ~78.6MB.
+- Current `Timeline.json` has both high-level `semanticSegments` and detailed `rawSignals`.
 - Segment count (active file): `2,663` semantic segments.
 - Segment composition (active file):
   - `timelinePath`: `1,324` segments (`12,855` path points total)
   - `visit`: `655` segments
   - `activity`: `676` segments
+- Position sample count in `rawSignals`: `11,231`.
+- Position samples with `altitudeMeters`: `9,893` (`1,338` are missing altitude).
 - Coordinates are encoded as strings with degree symbols (example: `"47.5554554°, -122.0495129°"`), so parsing/normalization is required.
 - Time fields are ISO timestamps with offsets; some segments also include explicit `TimezoneUtcOffsetMinutes`.
+- Export format is a full-history snapshot, so repeated imports will include previously seen records.
 
 ### Proposed consumption pipeline (no code yet)
 
 - Step 1: Parse + normalize
-  - Read `semanticSegments` and flatten into normalized records.
+  - Read `semanticSegments` and `rawSignals`.
+  - Extract `rawSignals.position` as primary GPS candidate records (`ts_utc`, `lat`, `lon`, `altitude_m`, `accuracy_m`, `source`).
+  - Flatten `semanticSegments` into supporting visit/activity records for optional place labeling.
   - Normalize timestamps to UTC epoch for fast matching.
   - Parse coordinate strings into `(lat, lon)` floats.
 - Step 2: Build matchable timeline index
-  - `timelinePath` points become precise time-location samples.
-  - `visit` segments provide stationary place candidates (`placeId`, semantic type, probability).
-  - `activity` segments provide start/end movement anchors when path points are sparse.
+  - Primary index: normalized `position` samples (best source for coordinate + altitude pairs).
+  - Secondary index: `timelinePath`/`visit`/`activity` for place-context fallback and user-facing labels.
 - Step 3: Match photos
   - Use `DateTimeOriginal` (or `CreateDate` fallback) from EXIF.
-  - Find nearest point within configurable tolerance window (for example ±5 to ±15 minutes).
-  - Assign confidence tiers:
-    - high: direct nearby `timelinePath` hit
-    - medium: inside `visit` interval
-    - low: interpolated from activity start/end only
+  - Find the nearest `position` sample by absolute timestamp distance.
+  - Enforce strict max window: `<= 60 minutes` from capture time.
+  - If no sample is within 60 minutes, leave GPS fields blank.
+  - Set GPS latitude, longitude, and altitude from the same matched record (never mix altitude from a different timestamp).
+  - If matched record has no altitude, keep altitude blank (do not interpolate).
+  - Suggested confidence tiers:
+    - high: nearest `position` <= 10 minutes
+    - medium: nearest `position` > 10 and <= 60 minutes
+    - none: no record within 60 minutes
 - Step 4: UI usage
-  - Show suggested location as non-destructive helper text/action.
-  - Allow one-click apply to batch `Location` field, then manual edit.
+  - Show non-destructive suggestions for:
+    - GPS fields (`lat`, `lon`, `altitude`) with match age/confidence
+  - Allow one-click apply, then manual edit.
+  - Keep batch `Location` as-is: user-entered session label only (used in naming/title context), not auto-filled from timeline matching.
 
-### Pre-processing and DB recommendation
+### Persistence recommendation (updated for full-history refresh imports)
 
-- V1 recommendation: no DB yet.
-  - Preprocess `Timeline.json` once into a compact cached normalized file (for example JSONL) keyed by source file mtime/hash.
-  - Load/cache this index at app start or first use; reuse for the session.
-- When to add SQLite:
-  - multiple timeline files/users, incremental updates, very large histories, or advanced querying (spatial/time filters, reverse geocode cache).
-  - Suggested schema if needed later:
-    - `timeline_points(ts_utc, lat, lon, source_type, segment_id, confidence, place_id, semantic_type)`
-    - index on `ts_utc`; optional index on `(lat, lon)` or geohash.
+- Recommendation: use a local SQLite cache now (not later), because each new `Timeline.json` is a refreshed full-history export (2017 -> present).
+- Import flow:
+  - Compute source file fingerprint (`size`, `mtime`, optional `sha256`) and record import event.
+  - Parse and normalize incoming records.
+  - Upsert into local tables with unique keys so duplicates are ignored safely.
+  - Do not append blindly; dedupe on insert and keep newest import metadata.
+- Suggested minimal tables:
+  - `timeline_imports(import_id, source_path, source_size, source_mtime, source_sha256, imported_at_utc)`
+  - `timeline_positions(ts_utc, lat, lon, altitude_m, accuracy_m, source_type, import_id, record_key UNIQUE)`
+  - `timeline_semantic(ts_start_utc, ts_end_utc, semantic_type, place_id, probability, lat, lon, import_id)`
+- Suggested indexes:
+  - `timeline_positions(ts_utc)`
+  - optional composite `(ts_utc, source_type)`
+- Benefit:
+  - fast nearest-timestamp lookups for every photo
+  - easy incremental refresh when user drops in a new full `Timeline.json`
+  - consistent GPS altitude pairing from the same matched position sample.
 
 ## Stretch goal - integration with Photolab 9.0 locally
 
