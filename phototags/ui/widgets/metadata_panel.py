@@ -27,6 +27,8 @@ class MetadataPanel(QWidget):
     TECHNICAL_WIDE_VALUE_WIDTH = 360
     TECHNICAL_VALUE_HEIGHT = 26
     PANEL_FIXED_WIDTH = TECHNICAL_WIDE_VALUE_WIDTH + 200
+    GPS_ALTITUDE_UNRELIABLE_COLOR = "#94867a"
+    GPS_ALTITUDE_UNRELIABLE_BACKGROUND = "#f4eee7"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -539,6 +541,24 @@ class MetadataPanel(QWidget):
         self.gps_latitude_edit.setText(latitude)
         self.gps_longitude_edit.setText(longitude)
         self.gps_altitude_edit.setText(altitude)
+        self.set_gps_altitude_unreliable(False)
+
+    def set_gps_altitude_unreliable(self, unreliable: bool, source_type: str = "") -> None:
+        """Dim altitude field when value comes from a less-reliable timeline source."""
+        if unreliable:
+            self.gps_altitude_edit.setStyleSheet(
+                (
+                    f"color: {self.GPS_ALTITUDE_UNRELIABLE_COLOR}; "
+                    f"background: {self.GPS_ALTITUDE_UNRELIABLE_BACKGROUND};"
+                )
+            )
+            source = source_type.strip() or "timeline"
+            self.gps_altitude_edit.setToolTip(
+                f"Altitude from {source} source is approximate and may be inaccurate."
+            )
+            return
+        self.gps_altitude_edit.setStyleSheet("")
+        self.gps_altitude_edit.setToolTip("")
 
     def clear_ai_suggestions(self) -> None:
         """Clear AI suggestion output."""

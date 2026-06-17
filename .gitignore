@@ -227,3 +227,12 @@ Research/e.dng
 # MAC Stuff
 .DS_Store
 **/.DS_Store
+
+# Privacy-sensitive location data
+gps/Timeline*.json
+
+# Local SQLite caches
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*

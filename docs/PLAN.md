@@ -349,6 +349,7 @@
   - no match within window => GPS remains blank.
   - altitude is taken only from the same matched position record.
   - if matched record has no altitude, altitude stays blank.
+  - timeline altitude from non-`GPS` sources (for example `WIFI`) is applied but marked as unreliable in UI (dimmed altitude field + status note).
 - Added background worker `LocationSuggestTask` (`phototags/workers/location_suggester.py`) so timeline import/lookups do not block UI.
 - Added right-panel GPS section with:
   - `Suggest GPS From Timeline`
