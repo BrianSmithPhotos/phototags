@@ -42,7 +42,7 @@ The app is a single-window PySide6 workflow with three panels:
   - ORF -> month/day folder
   - JPG/JPEG -> month/day/`jpg` folder
   - Size + SHA-256 verification before success
-- Local Ollama integration with vision capability check and crop-refinement fallback
+- Local Ollama integration with vision capability check, timeout-aware center-crop retry, and crop-refinement fallback
 - Timeline GPS enrichment:
   - Parses `rawSignals.position` + `semanticSegments.timelinePath`
   - Caches normalized records in SQLite
@@ -89,6 +89,12 @@ uv run python main.py --smoke-test-ms 2000
 
 - `PHOTOTAGS_OLLAMA_MODEL`
   - Default AI model name (default in code: `qwen3.6:35b`)
+- `PHOTOTAGS_OLLAMA_TIMEOUT_SECONDS`
+  - Request timeout in seconds for Ollama chat/tags calls (default: `180`)
+- `PHOTOTAGS_OLLAMA_KEEP_ALIVE`
+  - Ollama keep-alive hint to reduce cold-start delays (default: `15m`)
+- `PHOTOTAGS_OLLAMA_MAX_PREDICT`
+  - Optional maximum generated tokens per AI request (default: unset; uses model default)
 - `PHOTOTAGS_TIMELINE_PATH`
   - Override default timeline JSON path
 - `PHOTOTAGS_GROUP_DEBUG`

@@ -721,9 +721,17 @@ class MainWindow(QMainWindow):
             return
 
         self._ai_inflight = False
-        for path_text in payload.target_paths:
-            path_obj = Path(path_text)
-            base_keywords = payload.base_keywords_by_path.get(path_text, "")
+        apply_paths, expanded_to_group = self._ai_apply_paths_from_payload(payload)
+        applied_count = 0
+        skipped_unreadable = 0
+        for path_obj in apply_paths:
+            path_text = str(path_obj)
+            draft = self._ensure_draft_for_path(path_obj)
+            if draft is None:
+                skipped_unreadable += 1
+                continue
+
+            base_keywords = payload.base_keywords_by_path.get(path_text, draft.keywords)
             art_filter = payload.art_filter_by_path.get(path_text, "")
             camera_model = payload.camera_by_path.get(path_text, "")
             lens_model = payload.lens_by_path.get(path_text, "")
@@ -737,14 +745,14 @@ class MainWindow(QMainWindow):
                 self._parse_keywords(with_art_filter),
                 payload.suggestion.keywords,
             )
-            existing_draft = self._metadata_drafts.get(path_obj)
             self._metadata_drafts[path_obj] = MetadataDraft(
                 description=payload.suggestion.description,
                 keywords=", ".join(merged_keywords),
-                gps_latitude=(existing_draft.gps_latitude if existing_draft is not None else ""),
-                gps_longitude=(existing_draft.gps_longitude if existing_draft is not None else ""),
-                gps_altitude=(existing_draft.gps_altitude if existing_draft is not None else ""),
+                gps_latitude=draft.gps_latitude,
+                gps_longitude=draft.gps_longitude,
+                gps_altitude=draft.gps_altitude,
             )
+            applied_count += 1
 
         selected_path = self._selected_image_path
         if selected_path is not None:
@@ -758,13 +766,29 @@ class MainWindow(QMainWindow):
                     self._suppress_metadata_sync = False
 
         self._restore_metadata_action_controls()
-        applied_count = len(payload.target_paths)
+        if applied_count == 0:
+            self.metadata_panel.set_ai_status(
+                "AI suggestion ready but could not be applied (metadata unreadable for target files)",
+                is_error=True,
+            )
+            return
+        status_notes: list[str] = []
+        if expanded_to_group:
+            status_notes.append("expanded to full capture set")
+        if skipped_unreadable:
+            status_notes.append(f"{skipped_unreadable} skipped (metadata unreadable)")
+        if payload.suggestion.timeout_retry_succeeded:
+            status_notes.append("timeout fallback: 50% center crop")
+        elif payload.suggestion.timeout_retry_attempted:
+            status_notes.append("timeout fallback attempted")
         refinement_note = ""
         if payload.suggestion.refinement_applied:
             refinement_note = "crop-refinement applied"
         elif payload.suggestion.refinement_attempted:
             refinement_note = "crop-refinement attempted"
-        status_suffix = f"; {refinement_note}" if refinement_note else ""
+        if refinement_note:
+            status_notes.append(refinement_note)
+        status_suffix = f"; {'; '.join(status_notes)}" if status_notes else ""
         if applied_count > 1:
             self.metadata_panel.set_ai_status(
                 f"AI suggestions applied to {applied_count} images; keywords auto-appended{status_suffix}"
@@ -773,6 +797,18 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_ai_status(
             f"AI suggestions ready; keywords auto-appended{status_suffix}"
         )
+
+    def _ai_apply_paths_from_payload(self, payload: AiSuggestPayload) -> tuple[tuple[Path, ...], bool]:
+        """Return AI apply paths, expanding to current capture group when available."""
+        payload_paths = [Path(path_text) for path_text in payload.target_paths]
+        representative = Path(payload.representative_path)
+        group = self._group_by_path.get(representative)
+        if group is None:
+            deduped = self._dedupe_paths(payload_paths)
+            return tuple(deduped), False
+        merged = self._dedupe_paths([*payload_paths, *list(group.members)])
+        expanded = len(merged) > len(payload_paths)
+        return tuple(merged), expanded
 
     def _on_ai_suggest_failed(
         self,
