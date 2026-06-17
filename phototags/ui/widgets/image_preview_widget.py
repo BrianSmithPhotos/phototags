@@ -116,9 +116,18 @@ class ImagePreviewWidget(QWidget):
         self.variant_scroll.setWidget(self.variant_container)
         layout.addWidget(self.variant_scroll)
 
-        self.delete_button = QPushButton("Delete (Cmd+Backspace)")
-        self.delete_button.setEnabled(False)
-        layout.addWidget(self.delete_button)
+        skip_row = QHBoxLayout()
+        skip_row.setSpacing(6)
+
+        self.skip_single_button = QPushButton("Skip Image (Cmd+Backspace)")
+        self.skip_single_button.setEnabled(False)
+        skip_row.addWidget(self.skip_single_button, 1)
+
+        self.skip_set_button = QPushButton("Skip Capture Set")
+        self.skip_set_button.setEnabled(False)
+        skip_row.addWidget(self.skip_set_button, 1)
+
+        layout.addLayout(skip_row)
 
         self.setStyleSheet(
             f"""

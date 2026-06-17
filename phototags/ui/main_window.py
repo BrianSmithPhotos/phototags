@@ -166,9 +166,10 @@ class MainWindow(QMainWindow):
         self.metadata_panel.gps_altitude_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.gps_altitude_edit.textEdited.connect(self._on_altitude_manually_edited)
         self.metadata_panel.set_ai_model_name(OLLAMA_DEFAULT_MODEL)
-        self.preview_panel.delete_button.clicked.connect(self._on_skip_selected)
+        self.preview_panel.skip_single_button.clicked.connect(self._on_skip_single_selected)
+        self.preview_panel.skip_set_button.clicked.connect(self._on_skip_set_selected)
         self._skip_shortcut = QShortcut(QKeySequence("Meta+Backspace"), self)
-        self._skip_shortcut.activated.connect(self._on_skip_selected)
+        self._skip_shortcut.activated.connect(self._on_skip_single_selected)
         self._on_folder_selected(self.source_panel.current_folder)
         if self.source_panel.selected_path is not None:
             self._on_photo_selected(self.source_panel.selected_path)
@@ -192,7 +193,8 @@ class MainWindow(QMainWindow):
             self.preview_panel.set_variants([], None)
             self.metadata_panel.clear_metadata("No file selected")
             self.metadata_panel.set_rename_preview("")
-            self.preview_panel.delete_button.setEnabled(False)
+            self.preview_panel.skip_single_button.setEnabled(False)
+            self.preview_panel.skip_set_button.setEnabled(False)
             self.metadata_panel.set_suggest_button_enabled(False)
             self.metadata_panel.set_process_buttons_enabled(False)
             self.metadata_panel.set_gps_lookup_button_enabled(False)
@@ -520,7 +522,8 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_gps_lookup_button_enabled(False)
         self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
-        self.preview_panel.delete_button.setEnabled(False)
+        self.preview_panel.skip_single_button.setEnabled(False)
+        self.preview_panel.skip_set_button.setEnabled(False)
         self.metadata_panel.set_save_status(
             f"Saving description + keywords for {len(unique_paths)} file(s) ({scope_label})..."
         )
@@ -662,7 +665,8 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_gps_lookup_button_enabled(False)
         self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
-        self.preview_panel.delete_button.setEnabled(False)
+        self.preview_panel.skip_single_button.setEnabled(False)
+        self.preview_panel.skip_set_button.setEnabled(False)
         if len(target_paths) > 1:
             self.metadata_panel.set_ai_status(
                 f"Generating AI suggestions for {len(target_paths)}-image set..."
@@ -1129,7 +1133,11 @@ class MainWindow(QMainWindow):
             and lon_value is not None
             and not existing_exif_altitude
         )
-        self.preview_panel.delete_button.setEnabled(allow_actions)
+        selected = self._selected_image_path
+        group = self._group_by_path.get(selected) if selected is not None else None
+        has_capture_set = group is not None and len(group.members) > 1
+        self.preview_panel.skip_single_button.setEnabled(allow_actions)
+        self.preview_panel.skip_set_button.setEnabled(allow_actions and has_capture_set)
 
     def _selected_has_embedded_gps(self) -> bool:
         """Return True when selected image already contains EXIF lat/lon values."""
@@ -1249,7 +1257,8 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_gps_lookup_button_enabled(False)
         self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
-        self.preview_panel.delete_button.setEnabled(False)
+        self.preview_panel.skip_single_button.setEnabled(False)
+        self.preview_panel.skip_set_button.setEnabled(False)
         self.metadata_panel.set_save_status(
             f"Processing {len(unique_paths)} file(s) for {scope_label}..."
         )
@@ -1336,7 +1345,7 @@ class MainWindow(QMainWindow):
             unique.append(path)
         return unique
 
-    def _on_skip_selected(self) -> None:
+    def _on_skip_single_selected(self) -> None:
         """Skip selected file for this session without deleting from SD."""
         if self._selected_image_path is None:
             return
@@ -1345,6 +1354,23 @@ class MainWindow(QMainWindow):
         skipped_path = self._selected_image_path
         self.source_panel.mark_skipped(skipped_path)
         self.metadata_panel.set_save_status(f"Skipped {skipped_path.name}")
+
+    def _on_skip_set_selected(self) -> None:
+        """Skip all files in the selected capture set for this session."""
+        selected = self._selected_image_path
+        if selected is None:
+            return
+        if self._process_inflight or self._ai_inflight or self._save_inflight:
+            return
+
+        group = self._group_by_path.get(selected)
+        if group is None or len(group.members) <= 1:
+            self.source_panel.mark_skipped(selected)
+            self.metadata_panel.set_save_status(f"Skipped {selected.name}")
+            return
+
+        self.source_panel.mark_skipped_many(list(group.members))
+        self.metadata_panel.set_save_status(f"Skipped capture set ({len(group.members)} files)")
 
     def _on_variant_selected(self, image_path: Path) -> None:
         """Switch preview to selected capture-set variant."""
