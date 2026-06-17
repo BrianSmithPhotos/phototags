@@ -93,7 +93,7 @@ class MetadataBatchSaveTask(QRunnable):
         *,
         image_paths: tuple[Path, ...],
         scope_label: str,
-        draft_by_path: dict[str, tuple[str, str]],
+        draft_by_path: dict[str, tuple[str, str, str, str, str]],
         exif_service: ExifService,
         metadata_write_service: MetadataWriteService,
         signals: MetadataBatchSaveSignals,
@@ -149,9 +149,15 @@ class MetadataBatchSaveTask(QRunnable):
         if draft is not None:
             description = draft[0]
             keywords_source = draft[1]
+            gps_latitude = draft[2]
+            gps_longitude = draft[3]
+            gps_altitude = draft[4]
         else:
             description = ui_data.description
             keywords_source = ui_data.keywords
+            gps_latitude = ui_data.gps_latitude
+            gps_longitude = ui_data.gps_longitude
+            gps_altitude = ui_data.gps_altitude
 
         keywords_text = self._keywords_with_auto_tokens(
             keywords_source,
@@ -165,6 +171,9 @@ class MetadataBatchSaveTask(QRunnable):
                 image_path,
                 description=description,
                 keywords_text=keywords_text,
+                gps_latitude=gps_latitude,
+                gps_longitude=gps_longitude,
+                gps_altitude=gps_altitude,
             )
         except (OSError, ValueError, MetadataWriteError, RuntimeError) as exc:
             return MetadataBatchItemOutcome(

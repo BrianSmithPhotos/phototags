@@ -48,7 +48,7 @@ class ProcessBatchTask(QRunnable):
         image_paths: tuple[Path, ...],
         scope_label: str,
         location_text: str,
-        draft_by_path: dict[str, tuple[str, str]],
+        draft_by_path: dict[str, tuple[str, str, str, str, str]],
         destination_root: Path,
         exif_service: ExifService,
         rename_service: RenameService,
@@ -108,9 +108,15 @@ class ProcessBatchTask(QRunnable):
         if draft is not None:
             description = draft[0]
             keywords_source = draft[1]
+            gps_latitude = draft[2]
+            gps_longitude = draft[3]
+            gps_altitude = draft[4]
         else:
             description = ui_data.description
             keywords_source = ui_data.keywords
+            gps_latitude = ui_data.gps_latitude
+            gps_longitude = ui_data.gps_longitude
+            gps_altitude = ui_data.gps_altitude
         keywords_text = self._keywords_with_auto_tokens(
             keywords_source,
             ui_data.art_filter_token,
@@ -139,6 +145,9 @@ class ProcessBatchTask(QRunnable):
                 title=title,
                 description=description,
                 keywords_text=keywords_text,
+                gps_latitude=gps_latitude,
+                gps_longitude=gps_longitude,
+                gps_altitude=gps_altitude,
             )
         except (OSError, ValueError, ProcessMoveError, RuntimeError) as exc:
             return ProcessBatchItemOutcome(

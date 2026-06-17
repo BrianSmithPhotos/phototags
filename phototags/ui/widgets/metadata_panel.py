@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -25,7 +26,7 @@ class MetadataPanel(QWidget):
 
     TECHNICAL_WIDE_VALUE_WIDTH = 360
     TECHNICAL_VALUE_HEIGHT = 26
-    PANEL_FIXED_WIDTH = TECHNICAL_WIDE_VALUE_WIDTH + 160
+    PANEL_FIXED_WIDTH = TECHNICAL_WIDE_VALUE_WIDTH + 200
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -165,6 +166,52 @@ class MetadataPanel(QWidget):
             value_label=self.iso_value,
         )
         layout.addLayout(technical_grid)
+
+        gps_heading = QLabel("GPS Enrichment")
+        gps_heading.setObjectName("subHeading")
+        layout.addWidget(gps_heading)
+
+        gps_button_row = QHBoxLayout()
+        gps_button_row.setSpacing(6)
+
+        self.suggest_gps_button = QPushButton("Suggest GPS From Timeline")
+        self.suggest_gps_button.setEnabled(False)
+        self.suggest_gps_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        gps_button_row.addWidget(self.suggest_gps_button, 1)
+
+        self.apply_gps_button = QPushButton("Apply Suggested GPS")
+        self.apply_gps_button.setEnabled(False)
+        self.apply_gps_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        gps_button_row.addWidget(self.apply_gps_button, 1)
+
+        layout.addLayout(gps_button_row)
+
+        self.auto_altitude_lookup_check = QCheckBox("Auto lookup altitude when missing")
+        self.auto_altitude_lookup_check.setChecked(False)
+        layout.addWidget(self.auto_altitude_lookup_check)
+
+        gps_form = QFormLayout()
+        gps_form.setSpacing(6)
+        self.gps_latitude_edit = QLineEdit()
+        self.gps_latitude_edit.setPlaceholderText("Latitude")
+        self.gps_longitude_edit = QLineEdit()
+        self.gps_longitude_edit.setPlaceholderText("Longitude")
+        self.gps_altitude_edit = QLineEdit()
+        self.gps_altitude_edit.setPlaceholderText("Altitude meters (optional)")
+        gps_form.addRow("Lat", self.gps_latitude_edit)
+        gps_form.addRow("Lon", self.gps_longitude_edit)
+        gps_form.addRow("Alt (m)", self.gps_altitude_edit)
+        layout.addLayout(gps_form)
+
+        self.lookup_altitude_button = QPushButton("Lookup Altitude")
+        self.lookup_altitude_button.setEnabled(False)
+        layout.addWidget(self.lookup_altitude_button)
+
+        self.gps_status = QLabel("")
+        self.gps_status.setObjectName("statusLabel")
+        self.gps_status.setWordWrap(True)
+        self.gps_status.setMinimumHeight(34)
+        layout.addWidget(self.gps_status)
 
         rename_heading = QLabel("Rename Preview")
         rename_heading.setObjectName("subHeading")
@@ -333,6 +380,9 @@ class MetadataPanel(QWidget):
         focus_distance: str,
         captured_at: str,
         iso: str,
+        gps_latitude: str,
+        gps_longitude: str,
+        gps_altitude: str,
     ) -> None:
         """Populate editable and read-only metadata fields."""
         self.title_edit.setPlainText(title)
@@ -346,6 +396,11 @@ class MetadataPanel(QWidget):
         self.focus_distance_value.setText(focus_distance)
         self.captured_at_value.setText(captured_at)
         self.iso_value.setText(iso)
+        self.set_gps_fields(
+            latitude=gps_latitude,
+            longitude=gps_longitude,
+            altitude=gps_altitude,
+        )
 
     def set_exif_dump(self, dump_text: str) -> None:
         """Store EXIF dump text for potential future debug surfaces."""
@@ -365,9 +420,16 @@ class MetadataPanel(QWidget):
             focus_distance="",
             captured_at="",
             iso="",
+            gps_latitude="",
+            gps_longitude="",
+            gps_altitude="",
         )
         self._last_exif_dump = message
         self.clear_ai_suggestions()
+        self.clear_gps_status()
+        self.set_gps_lookup_button_enabled(False)
+        self.set_gps_apply_button_enabled(False)
+        self.set_lookup_altitude_button_enabled(False)
         self.set_suggest_button_enabled(False)
         self.set_save_buttons_enabled(False)
         self.set_process_buttons_enabled(False)
@@ -400,6 +462,18 @@ class MetadataPanel(QWidget):
         """Enable/disable AI suggestion action."""
         self.suggest_button.setEnabled(enabled)
 
+    def set_gps_lookup_button_enabled(self, enabled: bool) -> None:
+        """Enable/disable timeline GPS lookup action."""
+        self.suggest_gps_button.setEnabled(enabled)
+
+    def set_gps_apply_button_enabled(self, enabled: bool) -> None:
+        """Enable/disable apply-suggested-GPS action."""
+        self.apply_gps_button.setEnabled(enabled)
+
+    def set_lookup_altitude_button_enabled(self, enabled: bool) -> None:
+        """Enable/disable altitude lookup action."""
+        self.lookup_altitude_button.setEnabled(enabled)
+
     def ai_model_name(self) -> str:
         """Return current Ollama model name from AI settings."""
         return self.ai_model_edit.text().strip()
@@ -420,6 +494,16 @@ class MetadataPanel(QWidget):
         color = "#c84d3a" if is_error else BROWN_TEXT
         self.ai_status.setStyleSheet(f"color: {color}; font-size: 11px;")
 
+    def set_gps_status(self, message: str, is_error: bool = False) -> None:
+        """Set status line for GPS enrichment actions."""
+        self.gps_status.setText(message)
+        color = "#c84d3a" if is_error else BROWN_TEXT
+        self.gps_status.setStyleSheet(f"color: {color}; font-size: 11px;")
+
+    def clear_gps_status(self) -> None:
+        """Clear GPS enrichment status text."""
+        self.set_gps_status("")
+
     def location_text(self) -> str:
         """Return current rename location value."""
         return self.location_edit.text()
@@ -427,6 +511,34 @@ class MetadataPanel(QWidget):
     def rename_preview_text(self) -> str:
         """Return generated filename preview text."""
         return self.rename_preview.text().strip()
+
+    def gps_latitude_text(self) -> str:
+        """Return current GPS latitude text."""
+        return self.gps_latitude_edit.text().strip()
+
+    def gps_longitude_text(self) -> str:
+        """Return current GPS longitude text."""
+        return self.gps_longitude_edit.text().strip()
+
+    def gps_altitude_text(self) -> str:
+        """Return current GPS altitude text."""
+        return self.gps_altitude_edit.text().strip()
+
+    def auto_altitude_lookup_enabled(self) -> bool:
+        """Return whether auto altitude lookup is enabled."""
+        return self.auto_altitude_lookup_check.isChecked()
+
+    def set_gps_fields(
+        self,
+        *,
+        latitude: str,
+        longitude: str,
+        altitude: str,
+    ) -> None:
+        """Set editable GPS fields."""
+        self.gps_latitude_edit.setText(latitude)
+        self.gps_longitude_edit.setText(longitude)
+        self.gps_altitude_edit.setText(altitude)
 
     def clear_ai_suggestions(self) -> None:
         """Clear AI suggestion output."""

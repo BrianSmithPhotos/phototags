@@ -50,6 +50,9 @@ class ProcessMoveService:
         title: str,
         description: str,
         keywords_text: str,
+        gps_latitude: str | None = None,
+        gps_longitude: str | None = None,
+        gps_altitude: str | None = None,
     ) -> ProcessMoveResult:
         """Copy source file to destination tree, then write metadata to destination."""
         if not source_path.exists():
@@ -76,6 +79,9 @@ class ProcessMoveService:
                 title=title,
                 description=description,
                 keywords_text=keywords_text,
+                gps_latitude=gps_latitude,
+                gps_longitude=gps_longitude,
+                gps_altitude=gps_altitude,
             )
         except OSError as exc:
             self._cleanup_destination(destination_path)

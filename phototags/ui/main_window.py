@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import partial
 import os
 from pathlib import Path
@@ -13,16 +14,20 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
 from phototags.services.ai_suggestion_service import OLLAMA_DEFAULT_MODEL, AiSuggestionService
 from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
+from phototags.services.elevation_lookup_service import ElevationLookupService
 from phototags.services.exif_service import ExifService, ExifUiData
 from phototags.services.metadata_write_service import MetadataWriteService
 from phototags.services.process_move_service import ProcessMoveService
 from phototags.services.rename_service import RenameContext, RenameService
+from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
 from phototags.ui.widgets.source_panel import SourcePanel
 from phototags.workers.capture_group_loader import CaptureGroupLoadSignals, CaptureGroupLoadTask
+from phototags.workers.elevation_lookup import ElevationLookupSignals, ElevationLookupTask
 from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
+from phototags.workers.location_suggester import LocationSuggestSignals, LocationSuggestTask
 from phototags.workers.ai_suggester import AiSuggestPayload, AiSuggestSignals, AiSuggestTask
 from phototags.workers.metadata_writer import (
     MetadataBatchSaveResult,
@@ -43,6 +48,9 @@ class MetadataDraft:
 
     description: str
     keywords: str
+    gps_latitude: str
+    gps_longitude: str
+    gps_altitude: str
 
 
 class MainWindow(QMainWindow):
@@ -52,9 +60,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._ai_suggestion_service = AiSuggestionService()
         self._capture_group_service = CaptureGroupService()
+        self._elevation_lookup_service = ElevationLookupService()
         self._exif_service = ExifService()
         self._metadata_write_service = MetadataWriteService()
         self._rename_service = RenameService()
+        self._timeline_location_service = TimelineLocationService()
         self._process_move_service = ProcessMoveService(
             metadata_write_service=self._metadata_write_service,
             rename_service=self._rename_service,
@@ -69,6 +79,10 @@ class MainWindow(QMainWindow):
         self._exif_pool.setMaxThreadCount(1)
         self._metadata_write_pool = QThreadPool(self)
         self._metadata_write_pool.setMaxThreadCount(1)
+        self._location_pool = QThreadPool(self)
+        self._location_pool.setMaxThreadCount(1)
+        self._altitude_pool = QThreadPool(self)
+        self._altitude_pool.setMaxThreadCount(1)
         self._ai_pool = QThreadPool(self)
         self._ai_pool.setMaxThreadCount(1)
         self._process_pool = QThreadPool(self)
@@ -87,6 +101,12 @@ class MainWindow(QMainWindow):
         self._metadata_write_request_id = 0
         self._metadata_write_job_id = 0
         self._active_metadata_write_jobs: dict[int, tuple[MetadataBatchSaveTask, MetadataBatchSaveSignals]] = {}
+        self._location_request_id = 0
+        self._location_job_id = 0
+        self._active_location_jobs: dict[int, tuple[LocationSuggestTask, LocationSuggestSignals]] = {}
+        self._altitude_request_id = 0
+        self._altitude_job_id = 0
+        self._active_altitude_jobs: dict[int, tuple[ElevationLookupTask, ElevationLookupSignals]] = {}
         self._ai_request_id = 0
         self._ai_job_id = 0
         self._active_ai_jobs: dict[int, tuple[AiSuggestTask, AiSuggestSignals]] = {}
@@ -99,6 +119,7 @@ class MainWindow(QMainWindow):
         self._selected_image_path: Path | None = None
         self._current_exif_ui_data: ExifUiData | None = None
         self._metadata_drafts: dict[Path, MetadataDraft] = {}
+        self._gps_suggestions: dict[Path, GpsSuggestion] = {}
         self._suppress_metadata_sync = False
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
@@ -132,9 +153,15 @@ class MainWindow(QMainWindow):
         self.metadata_panel.process_set_button.clicked.connect(self._on_process_set_clicked)
         self.metadata_panel.process_session_button.clicked.connect(self._on_process_session_clicked)
         self.metadata_panel.suggest_button.clicked.connect(self._on_ai_suggest_clicked)
+        self.metadata_panel.suggest_gps_button.clicked.connect(self._on_gps_suggest_clicked)
+        self.metadata_panel.apply_gps_button.clicked.connect(self._on_gps_apply_clicked)
+        self.metadata_panel.lookup_altitude_button.clicked.connect(self._on_lookup_altitude_clicked)
         self.metadata_panel.location_edit.textChanged.connect(self._update_rename_preview)
         self.metadata_panel.description_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.keywords_edit.textChanged.connect(self._on_metadata_edited)
+        self.metadata_panel.gps_latitude_edit.textChanged.connect(self._on_metadata_edited)
+        self.metadata_panel.gps_longitude_edit.textChanged.connect(self._on_metadata_edited)
+        self.metadata_panel.gps_altitude_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.set_ai_model_name(OLLAMA_DEFAULT_MODEL)
         self.preview_panel.delete_button.clicked.connect(self._on_skip_selected)
         self._skip_shortcut = QShortcut(QKeySequence("Meta+Backspace"), self)
@@ -165,6 +192,10 @@ class MainWindow(QMainWindow):
             self.preview_panel.delete_button.setEnabled(False)
             self.metadata_panel.set_suggest_button_enabled(False)
             self.metadata_panel.set_process_buttons_enabled(False)
+            self.metadata_panel.set_gps_lookup_button_enabled(False)
+            self.metadata_panel.set_gps_apply_button_enabled(False)
+            self.metadata_panel.set_lookup_altitude_button_enabled(False)
+            self.metadata_panel.clear_gps_status()
             return
 
         self._preview_request_id += 1
@@ -188,6 +219,8 @@ class MainWindow(QMainWindow):
 
         self._start_exif_load(image_path=image_path)
         self.metadata_panel.clear_ai_suggestions()
+        self.metadata_panel.clear_gps_status()
+        self.metadata_panel.set_gps_apply_button_enabled(False)
         self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status("")
         self._update_rename_preview()
@@ -311,6 +344,9 @@ class MainWindow(QMainWindow):
             ui_data.lens_model,
         )
         description_text = draft.description if draft is not None else ui_data.description
+        gps_latitude_text = draft.gps_latitude if draft is not None else ui_data.gps_latitude
+        gps_longitude_text = draft.gps_longitude if draft is not None else ui_data.gps_longitude
+        gps_altitude_text = draft.gps_altitude if draft is not None else ui_data.gps_altitude
 
         self._suppress_metadata_sync = True
         try:
@@ -326,6 +362,9 @@ class MainWindow(QMainWindow):
                 focus_distance=ui_data.focus_distance,
                 captured_at=ui_data.captured_at_display,
                 iso=ui_data.iso,
+                gps_latitude=gps_latitude_text,
+                gps_longitude=gps_longitude_text,
+                gps_altitude=gps_altitude_text,
             )
         finally:
             self._suppress_metadata_sync = False
@@ -334,7 +373,15 @@ class MainWindow(QMainWindow):
         self._metadata_drafts[path_obj] = MetadataDraft(
             description=description_text,
             keywords=keywords_text,
+            gps_latitude=gps_latitude_text,
+            gps_longitude=gps_longitude_text,
+            gps_altitude=gps_altitude_text,
         )
+        if self._selected_has_embedded_gps():
+            self._gps_suggestions.pop(path_obj, None)
+            self.metadata_panel.set_gps_status("Existing EXIF GPS found; timeline suggestion skipped")
+        else:
+            self._start_gps_suggest(image_path=path_obj, captured_at=ui_data.captured_at)
         self._restore_metadata_action_controls()
         self._update_rename_preview()
 
@@ -399,6 +446,9 @@ class MainWindow(QMainWindow):
         )
         self.metadata_panel.set_rename_preview("")
         self.metadata_panel.set_suggest_button_enabled(False)
+        self.metadata_panel.set_gps_lookup_button_enabled(False)
+        self.metadata_panel.set_gps_apply_button_enabled(False)
+        self.metadata_panel.set_lookup_altitude_button_enabled(False)
 
     def _on_save_single_clicked(self) -> None:
         """Persist description + keywords only for selected file."""
@@ -436,7 +486,13 @@ class MainWindow(QMainWindow):
 
         self._sync_current_draft()
         draft_snapshot = {
-            str(path): (draft.description, draft.keywords)
+            str(path): (
+                draft.description,
+                draft.keywords,
+                draft.gps_latitude,
+                draft.gps_longitude,
+                draft.gps_altitude,
+            )
             for path, draft in self._metadata_drafts.items()
         }
 
@@ -449,6 +505,9 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_buttons_enabled(False)
         self.metadata_panel.set_process_buttons_enabled(False)
         self.metadata_panel.set_suggest_button_enabled(False)
+        self.metadata_panel.set_gps_lookup_button_enabled(False)
+        self.metadata_panel.set_gps_apply_button_enabled(False)
+        self.metadata_panel.set_lookup_altitude_button_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
         self.metadata_panel.set_save_status(
             f"Saving description + keywords for {len(unique_paths)} file(s) ({scope_label})..."
@@ -490,9 +549,13 @@ class MainWindow(QMainWindow):
                 continue
             image_path = Path(item.image_path)
             keywords_text = ", ".join(item.keywords)
+            existing_draft = self._metadata_drafts.get(image_path)
             self._metadata_drafts[image_path] = MetadataDraft(
                 description=item.description,
                 keywords=keywords_text,
+                gps_latitude=(existing_draft.gps_latitude if existing_draft is not None else ""),
+                gps_longitude=(existing_draft.gps_longitude if existing_draft is not None else ""),
+                gps_altitude=(existing_draft.gps_altitude if existing_draft is not None else ""),
             )
             if selected is not None and image_path == selected:
                 selected_saved = True
@@ -584,6 +647,9 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_suggest_button_enabled(False)
         self.metadata_panel.set_save_button_enabled(False)
         self.metadata_panel.set_process_buttons_enabled(False)
+        self.metadata_panel.set_gps_lookup_button_enabled(False)
+        self.metadata_panel.set_gps_apply_button_enabled(False)
+        self.metadata_panel.set_lookup_altitude_button_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
         if len(target_paths) > 1:
             self.metadata_panel.set_ai_status(
@@ -639,9 +705,13 @@ class MainWindow(QMainWindow):
                 self._parse_keywords(with_art_filter),
                 payload.suggestion.keywords,
             )
+            existing_draft = self._metadata_drafts.get(path_obj)
             self._metadata_drafts[path_obj] = MetadataDraft(
                 description=payload.suggestion.description,
                 keywords=", ".join(merged_keywords),
+                gps_latitude=(existing_draft.gps_latitude if existing_draft is not None else ""),
+                gps_longitude=(existing_draft.gps_longitude if existing_draft is not None else ""),
+                gps_altitude=(existing_draft.gps_altitude if existing_draft is not None else ""),
             )
 
         selected_path = self._selected_image_path
@@ -688,9 +758,271 @@ class MainWindow(QMainWindow):
         self._restore_metadata_action_controls()
         self.metadata_panel.set_ai_status(f"AI suggestion failed: {error}", is_error=True)
 
+    def _on_gps_suggest_clicked(self) -> None:
+        """Manually refresh GPS suggestion for currently selected image."""
+        selected = self._selected_image_path
+        if selected is None:
+            self.metadata_panel.set_gps_status("No file selected", is_error=True)
+            return
+        if self._selected_has_embedded_gps():
+            self.metadata_panel.set_gps_status(
+                "Existing EXIF GPS found; timeline suggestion disabled to avoid overwrite"
+            )
+            return
+        if self._save_inflight:
+            self.metadata_panel.set_gps_status("Save already running...", is_error=True)
+            return
+        if self._process_inflight:
+            self.metadata_panel.set_gps_status("Process already running...", is_error=True)
+            return
+        if self._ai_inflight:
+            self.metadata_panel.set_gps_status("AI suggestions running...", is_error=True)
+            return
+        captured_at = self._current_exif_ui_data.captured_at if self._current_exif_ui_data else ""
+        if not captured_at:
+            self.metadata_panel.set_gps_status("Capture time is missing; cannot match timeline", is_error=True)
+            return
+        self._start_gps_suggest(image_path=selected, captured_at=captured_at)
+
+    def _on_gps_apply_clicked(self) -> None:
+        """Apply current timeline GPS suggestion into editable GPS fields."""
+        selected = self._selected_image_path
+        if selected is None:
+            self.metadata_panel.set_gps_status("No file selected", is_error=True)
+            return
+        if self._selected_has_embedded_gps():
+            self.metadata_panel.set_gps_status(
+                "Existing EXIF GPS found; apply is disabled to avoid overwrite"
+            )
+            return
+        suggestion = self._gps_suggestions.get(selected)
+        if suggestion is None:
+            self.metadata_panel.set_gps_status("No GPS suggestion available", is_error=True)
+            return
+        self._suppress_metadata_sync = True
+        try:
+            self.metadata_panel.set_gps_fields(
+                latitude=f"{suggestion.latitude:.7f}",
+                longitude=f"{suggestion.longitude:.7f}",
+                altitude=("" if suggestion.altitude_m is None else f"{suggestion.altitude_m:.2f}"),
+            )
+        finally:
+            self._suppress_metadata_sync = False
+        self._sync_current_draft()
+        self.metadata_panel.set_gps_status("GPS suggestion applied to editable fields")
+        self._restore_metadata_action_controls()
+        if suggestion.altitude_m is None and self.metadata_panel.auto_altitude_lookup_enabled():
+            self._start_altitude_lookup(
+                image_path=selected,
+                latitude=suggestion.latitude,
+                longitude=suggestion.longitude,
+                reason="Timeline altitude missing; looking up elevation...",
+            )
+
+    def _on_lookup_altitude_clicked(self) -> None:
+        """Lookup and fill missing altitude for current GPS coordinates."""
+        selected = self._selected_image_path
+        if selected is None:
+            self.metadata_panel.set_gps_status("No file selected", is_error=True)
+            return
+        if self._save_inflight:
+            self.metadata_panel.set_gps_status("Save already running...", is_error=True)
+            return
+        if self._process_inflight:
+            self.metadata_panel.set_gps_status("Process already running...", is_error=True)
+            return
+        if self._ai_inflight:
+            self.metadata_panel.set_gps_status("AI suggestions running...", is_error=True)
+            return
+        if self._current_exif_ui_data is not None and self._current_exif_ui_data.gps_altitude.strip():
+            self.metadata_panel.set_gps_status("Existing EXIF altitude found; lookup skipped")
+            return
+
+        latitude, longitude = self._current_gps_lat_lon()
+        if latitude is None or longitude is None:
+            self.metadata_panel.set_gps_status(
+                "Latitude and longitude must be numeric before altitude lookup",
+                is_error=True,
+            )
+            return
+
+        self._start_altitude_lookup(
+            image_path=selected,
+            latitude=latitude,
+            longitude=longitude,
+            reason="Looking up altitude from elevation service...",
+        )
+
+    def _start_gps_suggest(self, *, image_path: Path, captured_at: str) -> None:
+        """Start one background timeline lookup for selected image capture time."""
+        if not captured_at.strip():
+            self.metadata_panel.set_gps_status("Capture time is missing; cannot match timeline")
+            self.metadata_panel.set_gps_apply_button_enabled(False)
+            return
+
+        self._location_request_id += 1
+        request_id = self._location_request_id
+        self._location_job_id += 1
+        job_id = self._location_job_id
+
+        self.metadata_panel.set_gps_status("Looking up nearest GPS in timeline...")
+        self.metadata_panel.set_gps_apply_button_enabled(False)
+
+        signals = LocationSuggestSignals()
+        signals.suggested.connect(partial(self._on_gps_suggested, request_id, job_id))
+        signals.failed.connect(partial(self._on_gps_suggest_failed, request_id, job_id))
+
+        task = LocationSuggestTask(
+            image_path=image_path,
+            captured_at=captured_at,
+            service=self._timeline_location_service,
+            signals=signals,
+        )
+        self._active_location_jobs[job_id] = (task, signals)
+        self._location_pool.start(task)
+
+    def _start_altitude_lookup(
+        self,
+        *,
+        image_path: Path,
+        latitude: float,
+        longitude: float,
+        reason: str,
+    ) -> None:
+        """Start background elevation lookup for one coordinate pair."""
+        self._altitude_request_id += 1
+        request_id = self._altitude_request_id
+        self._altitude_job_id += 1
+        job_id = self._altitude_job_id
+
+        self.metadata_panel.set_gps_status(reason)
+        self.metadata_panel.set_lookup_altitude_button_enabled(False)
+
+        signals = ElevationLookupSignals()
+        signals.looked_up.connect(partial(self._on_altitude_looked_up, request_id, job_id))
+        signals.failed.connect(partial(self._on_altitude_lookup_failed, request_id, job_id))
+
+        task = ElevationLookupTask(
+            image_path=image_path,
+            latitude=latitude,
+            longitude=longitude,
+            service=self._elevation_lookup_service,
+            signals=signals,
+        )
+        self._active_altitude_jobs[job_id] = (task, signals)
+        self._altitude_pool.start(task)
+
+    def _on_altitude_looked_up(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        altitude_m: float,
+    ) -> None:
+        """Apply looked-up altitude when field is currently blank."""
+        self._finish_altitude_job(job_id)
+        if request_id != self._altitude_request_id:
+            return
+
+        path_obj = Path(image_path)
+        if path_obj != self._selected_image_path:
+            return
+        if self._current_exif_ui_data is not None and self._current_exif_ui_data.gps_altitude.strip():
+            self.metadata_panel.set_gps_status("Existing EXIF altitude found; lookup result ignored")
+            self._restore_metadata_action_controls()
+            return
+        if self.metadata_panel.gps_altitude_text():
+            self.metadata_panel.set_gps_status("Altitude already set; lookup result not applied")
+            self._restore_metadata_action_controls()
+            return
+
+        self._suppress_metadata_sync = True
+        try:
+            self.metadata_panel.gps_altitude_edit.setText(f"{altitude_m:.2f}")
+        finally:
+            self._suppress_metadata_sync = False
+        self._sync_current_draft()
+        self.metadata_panel.set_gps_status(f"Altitude filled from lookup: {altitude_m:.2f} m")
+        self._restore_metadata_action_controls()
+
+    def _on_altitude_lookup_failed(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        error: str,
+    ) -> None:
+        """Handle elevation lookup errors."""
+        self._finish_altitude_job(job_id)
+        if request_id != self._altitude_request_id:
+            return
+        if Path(image_path) != self._selected_image_path:
+            return
+        self.metadata_panel.set_gps_status(f"Altitude lookup failed: {error}", is_error=True)
+        self._restore_metadata_action_controls()
+
+    def _on_gps_suggested(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        suggestion: GpsSuggestion | None,
+    ) -> None:
+        """Apply timeline GPS lookup result for selected image."""
+        self._finish_location_job(job_id)
+        if request_id != self._location_request_id:
+            return
+
+        path_obj = Path(image_path)
+        if suggestion is None:
+            self._gps_suggestions.pop(path_obj, None)
+            if path_obj == self._selected_image_path:
+                self.metadata_panel.set_gps_status("No timeline record within 60 minutes of capture time")
+                self._restore_metadata_action_controls()
+            return
+
+        self._gps_suggestions[path_obj] = suggestion
+        if path_obj != self._selected_image_path:
+            return
+
+        matched_at = datetime.fromtimestamp(suggestion.matched_ts_utc, tz=timezone.utc)
+        matched_at_text = matched_at.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+        age_minutes = suggestion.age_seconds // 60
+        age_seconds_remainder = suggestion.age_seconds % 60
+        accuracy_text = (
+            ""
+            if suggestion.accuracy_m is None
+            else f", accuracy {suggestion.accuracy_m:.0f}m"
+        )
+        self.metadata_panel.set_gps_status(
+            (
+                f"Nearest GPS {age_minutes}m {age_seconds_remainder}s away "
+                f"({suggestion.source_type}{accuracy_text}); matched {matched_at_text}"
+            )
+        )
+        self._restore_metadata_action_controls()
+
+    def _on_gps_suggest_failed(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        error: str,
+    ) -> None:
+        """Handle GPS timeline lookup errors."""
+        self._finish_location_job(job_id)
+        if request_id != self._location_request_id:
+            return
+        if Path(image_path) != self._selected_image_path:
+            return
+        self._gps_suggestions.pop(Path(image_path), None)
+        self.metadata_panel.set_gps_status(f"GPS lookup failed: {error}", is_error=True)
+        self._restore_metadata_action_controls()
+
     def _on_metadata_edited(self) -> None:
         """Persist current editors into in-memory draft for selected image."""
         self._sync_current_draft()
+        self._restore_metadata_action_controls()
 
     def _sync_current_draft(self) -> None:
         """Capture editable fields for current selection into draft cache."""
@@ -701,6 +1033,9 @@ class MainWindow(QMainWindow):
         self._metadata_drafts[self._selected_image_path] = MetadataDraft(
             description=self.metadata_panel.description_text(),
             keywords=self.metadata_panel.keywords_text(),
+            gps_latitude=self.metadata_panel.gps_latitude_text(),
+            gps_longitude=self.metadata_panel.gps_longitude_text(),
+            gps_altitude=self.metadata_panel.gps_altitude_text(),
         )
 
     def _ai_targets_for(self, selected_path: Path) -> tuple[Path, tuple[Path, ...]]:
@@ -732,10 +1067,46 @@ class MainWindow(QMainWindow):
             and not self._ai_inflight
             and not self._save_inflight
         )
+        allow_gps_actions = allow_actions and not self._selected_has_embedded_gps()
         self.metadata_panel.set_suggest_button_enabled(allow_actions)
         self.metadata_panel.set_save_button_enabled(allow_actions)
         self.metadata_panel.set_process_buttons_enabled(allow_actions)
+        self.metadata_panel.set_gps_lookup_button_enabled(allow_gps_actions)
+        has_suggestion = (
+            self._selected_image_path is not None
+            and self._selected_image_path in self._gps_suggestions
+        )
+        self.metadata_panel.set_gps_apply_button_enabled(allow_gps_actions and has_suggestion)
+        existing_exif_altitude = bool(
+            self._current_exif_ui_data is not None
+            and self._current_exif_ui_data.gps_altitude.strip()
+        )
+        lat_value, lon_value = self._current_gps_lat_lon()
+        self.metadata_panel.set_lookup_altitude_button_enabled(
+            allow_actions
+            and lat_value is not None
+            and lon_value is not None
+            and not existing_exif_altitude
+        )
         self.preview_panel.delete_button.setEnabled(allow_actions)
+
+    def _selected_has_embedded_gps(self) -> bool:
+        """Return True when selected image already contains EXIF lat/lon values."""
+        data = self._current_exif_ui_data
+        if data is None:
+            return False
+        return bool(data.gps_latitude.strip() and data.gps_longitude.strip())
+
+    def _current_gps_lat_lon(self) -> tuple[float | None, float | None]:
+        """Return numeric lat/lon from editable GPS fields when valid."""
+        lat_text = self.metadata_panel.gps_latitude_text()
+        lon_text = self.metadata_panel.gps_longitude_text()
+        if not lat_text or not lon_text:
+            return None, None
+        try:
+            return float(lat_text), float(lon_text)
+        except ValueError:
+            return None, None
 
     def _capture_context(self) -> str:
         """Return short camera/exposure context string for AI prompting."""
@@ -815,7 +1186,13 @@ class MainWindow(QMainWindow):
 
         self._sync_current_draft()
         draft_snapshot = {
-            str(path): (draft.description, draft.keywords)
+            str(path): (
+                draft.description,
+                draft.keywords,
+                draft.gps_latitude,
+                draft.gps_longitude,
+                draft.gps_altitude,
+            )
             for path, draft in self._metadata_drafts.items()
         }
 
@@ -828,6 +1205,9 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_button_enabled(False)
         self.metadata_panel.set_process_buttons_enabled(False)
         self.metadata_panel.set_suggest_button_enabled(False)
+        self.metadata_panel.set_gps_lookup_button_enabled(False)
+        self.metadata_panel.set_gps_apply_button_enabled(False)
+        self.metadata_panel.set_lookup_altitude_button_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
         self.metadata_panel.set_save_status(
             f"Processing {len(unique_paths)} file(s) for {scope_label}..."
@@ -938,6 +1318,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Stop thread pools cleanly before window teardown."""
         self._group_pool.clear()
+        self._location_pool.clear()
+        self._altitude_pool.clear()
         self._ai_pool.clear()
         self._process_pool.clear()
         self._metadata_write_pool.clear()
@@ -945,6 +1327,8 @@ class MainWindow(QMainWindow):
         self._preview_pool.clear()
         self._thumbnail_pool.clear()
         self._group_pool.waitForDone()
+        self._location_pool.waitForDone()
+        self._altitude_pool.waitForDone()
         self._ai_pool.waitForDone()
         self._process_pool.waitForDone()
         self._metadata_write_pool.waitForDone()
@@ -968,6 +1352,14 @@ class MainWindow(QMainWindow):
     def _finish_metadata_write_job(self, job_id: int) -> None:
         """Release references for completed metadata save tasks."""
         self._active_metadata_write_jobs.pop(job_id, None)
+
+    def _finish_location_job(self, job_id: int) -> None:
+        """Release references for completed location suggestion tasks."""
+        self._active_location_jobs.pop(job_id, None)
+
+    def _finish_altitude_job(self, job_id: int) -> None:
+        """Release references for completed altitude lookup tasks."""
+        self._active_altitude_jobs.pop(job_id, None)
 
     def _finish_ai_job(self, job_id: int) -> None:
         """Release references for completed AI suggestion tasks."""

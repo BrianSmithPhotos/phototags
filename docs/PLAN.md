@@ -264,15 +264,15 @@
 - Capture-set thumbnail strip in preview panel was increased in height to avoid bottom clipping of variant thumbnails/buttons.
 - Variant controls were nudged upward by tightening local panel spacing.
 
-## Location Enrichment (Planning Only) - Timeline.json
+## Location Enrichment - Timeline.json
 
-- [ ] Define a location ingestion contract from `gps/Timeline.json`.
-  - Test: parser extracts normalized `semanticSegments` + `rawSignals.position` records with UTC timestamps, lat/lon floats, and optional altitude.
-- [ ] Define photo-to-location matching strategy.
+- [x] Define and implement location ingestion from `gps/Timeline.json`.
+  - Test: parser extracts normalized `rawSignals.position` + `semanticSegments.timelinePath` records with UTC timestamps, lat/lon floats, and optional altitude.
+- [x] Define and implement photo-to-location matching strategy.
   - Test: known photo capture times resolve to nearest timeline position sample and return GPS lat/lon/alt when a match exists.
-- [ ] Decide cache/persistence approach for timeline data.
-  - Test: importing a refreshed full-history `Timeline.json` upserts only new/changed normalized records into local storage.
-- [ ] Define UI integration for location suggestions (non-destructive).
+- [x] Implement cache/persistence for timeline data.
+  - Test: importing a refreshed full-history `Timeline.json` upserts only new/changed normalized records into local SQLite storage.
+- [x] Implement non-destructive UI integration for GPS suggestions.
   - Test: GPS suggestion can be applied or ignored independently, while batch `Location` remains manual session labeling.
 
 ### Timeline.json observations (trimmed active sample)
@@ -338,6 +338,31 @@
   - fast nearest-timestamp lookups for every photo
   - easy incremental refresh when user drops in a new full `Timeline.json`
   - consistent GPS altitude pairing from the same matched position sample.
+
+### Location enrichment implementation notes (completed)
+
+- Added `TimelineLocationService` (`phototags/services/timeline_location_service.py`) with local SQLite cache and idempotent upsert import.
+- Cache file location uses macOS app data path: `~/Library/Application Support/phototags/timeline_cache.sqlite3`.
+- Timeline source defaults to `gps/Timeline.json` and can be overridden with `PHOTOTAGS_TIMELINE_PATH`.
+- Import signature uses source path + file size + file mtime (and stores SHA-256 on each import event).
+- Matching uses nearest timestamp with strict `<= 60 minutes` cutoff:
+  - no match within window => GPS remains blank.
+  - altitude is taken only from the same matched position record.
+  - if matched record has no altitude, altitude stays blank.
+- Added background worker `LocationSuggestTask` (`phototags/workers/location_suggester.py`) so timeline import/lookups do not block UI.
+- Added right-panel GPS section with:
+  - `Suggest GPS From Timeline`
+  - `Apply Suggested GPS`
+  - `Auto lookup altitude when missing`
+  - `Lookup Altitude`
+  - editable `Lat`, `Lon`, `Alt (m)` fields
+  - status text showing match age/source.
+- Added elevation lookup fallback service for missing altitude (USGS EPQS):
+  - manual: `Lookup Altitude` uses current editable lat/lon and fills altitude only when altitude is blank.
+  - optional auto: when enabled, applying timeline GPS with missing altitude triggers background elevation lookup.
+  - safeguard: existing EXIF altitude is never overwritten by lookup results.
+- GPS values are now included in save/process metadata writes when valid.
+- Batch `Location` remains unchanged as a manual session label for naming/title context and is not timeline-driven.
 
 ## Stretch goal - integration with Photolab 9.0 locally
 

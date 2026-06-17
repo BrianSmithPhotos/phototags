@@ -30,6 +30,9 @@ class MetadataWriteService:
         title: str | None = None,
         description: str,
         keywords_text: str,
+        gps_latitude: str | None = None,
+        gps_longitude: str | None = None,
+        gps_altitude: str | None = None,
     ) -> MetadataWriteResult:
         """Write title, description, and keywords to IPTC/XMP tags.
 
@@ -46,6 +49,9 @@ class MetadataWriteService:
             title=(cleaned_title if title is not None else None),
             description=cleaned_description,
             keywords=keywords,
+            gps_latitude=gps_latitude,
+            gps_longitude=gps_longitude,
+            gps_altitude=gps_altitude,
         )
         result = subprocess.run(
             command,
@@ -75,8 +81,16 @@ class MetadataWriteService:
         title: str | None,
         description: str,
         keywords: list[str],
+        gps_latitude: str | None,
+        gps_longitude: str | None,
+        gps_altitude: str | None,
     ) -> list[str]:
         """Construct exiftool write command."""
+        normalized_gps = self._normalize_gps_values(
+            gps_latitude=gps_latitude,
+            gps_longitude=gps_longitude,
+            gps_altitude=gps_altitude,
+        )
         command = ["exiftool"]
         if title is not None:
             command.extend(
@@ -96,8 +110,52 @@ class MetadataWriteService:
         for keyword in keywords:
             command.append(f"-IPTC:Keywords={keyword}")
             command.append(f"-XMP-dc:Subject={keyword}")
+        if normalized_gps is not None:
+            command.extend(
+                [
+                    f"-GPSLatitude={normalized_gps[0]}",
+                    f"-GPSLongitude={normalized_gps[1]}",
+                ]
+            )
+            if normalized_gps[2] is not None:
+                command.append(f"-GPSAltitude={normalized_gps[2]}")
         command.append(str(image_path))
         return command
+
+    def _normalize_gps_values(
+        self,
+        *,
+        gps_latitude: str | None,
+        gps_longitude: str | None,
+        gps_altitude: str | None,
+    ) -> tuple[float, float, float | None] | None:
+        """Validate and normalize GPS values for write command arguments."""
+        lat_text = (gps_latitude or "").strip()
+        lon_text = (gps_longitude or "").strip()
+        alt_text = (gps_altitude or "").strip()
+
+        if not lat_text and not lon_text and not alt_text:
+            return None
+        if not lat_text or not lon_text:
+            raise MetadataWriteError("GPS latitude and longitude must both be provided")
+
+        try:
+            latitude = float(lat_text)
+            longitude = float(lon_text)
+        except ValueError as exc:
+            raise MetadataWriteError("GPS latitude/longitude must be numeric") from exc
+        if latitude < -90 or latitude > 90:
+            raise MetadataWriteError("GPS latitude must be between -90 and 90")
+        if longitude < -180 or longitude > 180:
+            raise MetadataWriteError("GPS longitude must be between -180 and 180")
+
+        altitude: float | None = None
+        if alt_text:
+            try:
+                altitude = float(alt_text)
+            except ValueError as exc:
+                raise MetadataWriteError("GPS altitude must be numeric") from exc
+        return latitude, longitude, altitude
 
     def _normalize_keywords(self, keywords_text: str) -> list[str]:
         """Parse comma-delimited keywords and remove duplicates."""

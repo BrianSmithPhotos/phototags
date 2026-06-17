@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import subprocess
 from typing import Any
 
@@ -30,6 +31,9 @@ class ExifUiData:
     captured_at: str
     captured_at_display: str
     iso: str
+    gps_latitude: str
+    gps_longitude: str
+    gps_altitude: str
     art_filter_token: str
 
 
@@ -199,6 +203,35 @@ class ExifService:
                     "Composite:ISO",
                 ),
             ),
+            gps_latitude=self._gps_coordinate_text(
+                metadata=metadata,
+                coordinate_keys=(
+                    "Composite:GPSLatitude",
+                    "GPS:GPSLatitude",
+                    "EXIF:GPSLatitude",
+                ),
+                ref_keys=(
+                    "GPS:GPSLatitudeRef",
+                    "EXIF:GPSLatitudeRef",
+                    "Composite:GPSLatitudeRef",
+                ),
+                is_latitude=True,
+            ),
+            gps_longitude=self._gps_coordinate_text(
+                metadata=metadata,
+                coordinate_keys=(
+                    "Composite:GPSLongitude",
+                    "GPS:GPSLongitude",
+                    "EXIF:GPSLongitude",
+                ),
+                ref_keys=(
+                    "GPS:GPSLongitudeRef",
+                    "EXIF:GPSLongitudeRef",
+                    "Composite:GPSLongitudeRef",
+                ),
+                is_latitude=False,
+            ),
+            gps_altitude=self._gps_altitude_text(metadata),
             art_filter_token=self._art_filter_token(metadata),
         )
 
@@ -260,6 +293,104 @@ class ExifService:
         if make and model:
             return f"{make} {model}"
         return make or model
+
+    def _gps_coordinate_text(
+        self,
+        *,
+        metadata: dict[str, Any],
+        coordinate_keys: tuple[str, ...],
+        ref_keys: tuple[str, ...],
+        is_latitude: bool,
+    ) -> str:
+        """Return decimal GPS coordinate text for UI editing/saving."""
+        coordinate_text = self._first_text(metadata, coordinate_keys)
+        if not coordinate_text:
+            return ""
+        ref_text = self._first_text(metadata, ref_keys)
+
+        try:
+            value = float(coordinate_text)
+            return f"{value:.7f}"
+        except ValueError:
+            pass
+
+        parsed = self._parse_dms_coordinate(
+            coordinate_text=coordinate_text,
+            ref_text=ref_text,
+            is_latitude=is_latitude,
+        )
+        if parsed is None:
+            return coordinate_text
+        return f"{parsed:.7f}"
+
+    def _parse_dms_coordinate(
+        self,
+        *,
+        coordinate_text: str,
+        ref_text: str,
+        is_latitude: bool,
+    ) -> float | None:
+        """Parse DMS GPS text into signed decimal degrees."""
+        pattern = (
+            r"^\s*([+-]?\d+(?:\.\d+)?)\s*deg(?:rees?)?\s*"
+            r"(\d+(?:\.\d+)?)?'\s*"
+            r"(\d+(?:\.\d+)?)?\"?\s*([NSEW])?\s*$"
+        )
+        match = re.match(pattern, coordinate_text, flags=re.IGNORECASE)
+        if match is None:
+            decimal_match = re.match(
+                r"^\s*([+-]?\d+(?:\.\d+)?)\s*([NSEW])?\s*$",
+                coordinate_text,
+                flags=re.IGNORECASE,
+            )
+            if decimal_match is None:
+                return None
+            degrees = float(decimal_match.group(1))
+            minutes = 0.0
+            seconds = 0.0
+            suffix = (decimal_match.group(2) or "").upper()
+        else:
+            degrees = float(match.group(1))
+            minutes = float(match.group(2)) if match.group(2) else 0.0
+            seconds = float(match.group(3)) if match.group(3) else 0.0
+            suffix = (match.group(4) or "").upper()
+        hemisphere = suffix or ref_text.strip().upper()
+
+        absolute = abs(degrees) + (minutes / 60.0) + (seconds / 3600.0)
+        signed = -absolute if degrees < 0 else absolute
+
+        if hemisphere:
+            if hemisphere in {"S", "W"}:
+                signed = -abs(absolute)
+            elif hemisphere in {"N", "E"}:
+                signed = abs(absolute)
+
+        if is_latitude and (signed < -90.0 or signed > 90.0):
+            return None
+        if not is_latitude and (signed < -180.0 or signed > 180.0):
+            return None
+        return signed
+
+    def _gps_altitude_text(self, metadata: dict[str, Any]) -> str:
+        """Return numeric GPS altitude text when available."""
+        altitude_text = self._first_text(
+            metadata,
+            (
+                "Composite:GPSAltitude",
+                "GPS:GPSAltitude",
+                "EXIF:GPSAltitude",
+            ),
+        )
+        if not altitude_text:
+            return ""
+        try:
+            value = float(altitude_text)
+            return f"{value:.2f}"
+        except ValueError:
+            match = re.search(r"[-+]?\d+(?:\.\d+)?", altitude_text)
+            if match is None:
+                return altitude_text
+            return match.group(0)
 
     def _art_filter_token(self, metadata: dict[str, Any]) -> str:
         """Return filename token for ArtFilter/stacking states."""
