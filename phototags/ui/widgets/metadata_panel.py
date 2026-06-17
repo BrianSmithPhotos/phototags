@@ -183,9 +183,20 @@ class MetadataPanel(QWidget):
         self.rename_preview.setPlaceholderText("Filename preview appears in Part 5")
         layout.addWidget(self.rename_preview)
 
-        self.save_button = QPushButton("Save Description + Keywords")
-        self.save_button.setEnabled(False)
-        layout.addWidget(self.save_button)
+        save_row = QHBoxLayout()
+        save_row.setSpacing(6)
+
+        self.save_single_button = QPushButton("Save Single")
+        self.save_single_button.setEnabled(False)
+        self.save_single_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        save_row.addWidget(self.save_single_button, 1)
+
+        self.save_set_button = QPushButton("Save Capture Set")
+        self.save_set_button.setEnabled(False)
+        self.save_set_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        save_row.addWidget(self.save_set_button, 1)
+
+        layout.addLayout(save_row)
 
         process_heading = QLabel("Process & Move")
         process_heading.setObjectName("subHeading")
@@ -358,7 +369,7 @@ class MetadataPanel(QWidget):
         self._last_exif_dump = message
         self.clear_ai_suggestions()
         self.set_suggest_button_enabled(False)
-        self.set_save_button_enabled(False)
+        self.set_save_buttons_enabled(False)
         self.set_process_buttons_enabled(False)
         self.set_save_status("")
 
@@ -370,9 +381,14 @@ class MetadataPanel(QWidget):
         """Return current keywords editor text."""
         return self.keywords_edit.toPlainText()
 
+    def set_save_buttons_enabled(self, enabled: bool) -> None:
+        """Enable/disable metadata save actions."""
+        self.save_single_button.setEnabled(enabled)
+        self.save_set_button.setEnabled(enabled)
+
     def set_save_button_enabled(self, enabled: bool) -> None:
-        """Enable/disable metadata save action."""
-        self.save_button.setEnabled(enabled)
+        """Backward-compatible wrapper for save button state."""
+        self.set_save_buttons_enabled(enabled)
 
     def set_process_buttons_enabled(self, enabled: bool) -> None:
         """Enable/disable all process action buttons."""

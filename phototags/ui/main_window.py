@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 from phototags.services.ai_suggestion_service import OLLAMA_DEFAULT_MODEL, AiSuggestionService
 from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
 from phototags.services.exif_service import ExifService, ExifUiData
-from phototags.services.metadata_write_service import MetadataWriteResult, MetadataWriteService
+from phototags.services.metadata_write_service import MetadataWriteService
 from phototags.services.process_move_service import ProcessMoveService
 from phototags.services.rename_service import RenameContext, RenameService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
@@ -24,7 +24,11 @@ from phototags.workers.capture_group_loader import CaptureGroupLoadSignals, Capt
 from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 from phototags.workers.ai_suggester import AiSuggestPayload, AiSuggestSignals, AiSuggestTask
-from phototags.workers.metadata_writer import MetadataSaveSignals, MetadataSaveTask
+from phototags.workers.metadata_writer import (
+    MetadataBatchSaveResult,
+    MetadataBatchSaveSignals,
+    MetadataBatchSaveTask,
+)
 from phototags.workers.process_batch_mover import ProcessBatchResult, ProcessBatchSignals, ProcessBatchTask
 
 PREVIEW_MAX_EDGE = 2800
@@ -82,7 +86,7 @@ class MainWindow(QMainWindow):
         self._active_exif_jobs: dict[int, tuple[ExifLoadTask, ExifLoadSignals]] = {}
         self._metadata_write_request_id = 0
         self._metadata_write_job_id = 0
-        self._active_metadata_write_jobs: dict[int, tuple[MetadataSaveTask, MetadataSaveSignals]] = {}
+        self._active_metadata_write_jobs: dict[int, tuple[MetadataBatchSaveTask, MetadataBatchSaveSignals]] = {}
         self._ai_request_id = 0
         self._ai_job_id = 0
         self._active_ai_jobs: dict[int, tuple[AiSuggestTask, AiSuggestSignals]] = {}
@@ -90,6 +94,7 @@ class MainWindow(QMainWindow):
         self._process_job_id = 0
         self._active_process_jobs: dict[int, tuple[ProcessBatchTask, ProcessBatchSignals]] = {}
         self._ai_inflight = False
+        self._save_inflight = False
         self._process_inflight = False
         self._selected_image_path: Path | None = None
         self._current_exif_ui_data: ExifUiData | None = None
@@ -121,7 +126,8 @@ class MainWindow(QMainWindow):
         self.source_panel.photo_selected.connect(self._on_photo_selected)
         self.source_panel.thumbnail_loaded.connect(self._on_thumbnail_loaded)
         self.preview_panel.variant_selected.connect(self._on_variant_selected)
-        self.metadata_panel.save_button.clicked.connect(self._on_save_metadata_clicked)
+        self.metadata_panel.save_single_button.clicked.connect(self._on_save_single_clicked)
+        self.metadata_panel.save_set_button.clicked.connect(self._on_save_set_clicked)
         self.metadata_panel.process_single_button.clicked.connect(self._on_process_single_clicked)
         self.metadata_panel.process_set_button.clicked.connect(self._on_process_set_clicked)
         self.metadata_panel.process_session_button.clicked.connect(self._on_process_session_clicked)
@@ -394,10 +400,28 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_rename_preview("")
         self.metadata_panel.set_suggest_button_enabled(False)
 
-    def _on_save_metadata_clicked(self) -> None:
-        """Persist description and keywords for selected file."""
-        if self._selected_image_path is None:
+    def _on_save_single_clicked(self) -> None:
+        """Persist description + keywords only for selected file."""
+        selected = self._selected_image_path
+        if selected is None:
             self.metadata_panel.set_save_status("No file selected", is_error=True)
+            return
+        self._start_save_scope("single image", [selected])
+
+    def _on_save_set_clicked(self) -> None:
+        """Persist description + keywords for all files in selected capture set."""
+        selected = self._selected_image_path
+        if selected is None:
+            self.metadata_panel.set_save_status("No file selected", is_error=True)
+            return
+        group = self._group_by_path.get(selected)
+        paths = list(group.members) if group is not None else [selected]
+        self._start_save_scope("capture set", paths)
+
+    def _start_save_scope(self, scope_label: str, paths: list[Path]) -> None:
+        """Start one background save job for selected scope."""
+        if self._save_inflight:
+            self.metadata_panel.set_save_status("Save already running...", is_error=True)
             return
         if self._process_inflight:
             self.metadata_panel.set_save_status("Process already running...", is_error=True)
@@ -405,81 +429,116 @@ class MainWindow(QMainWindow):
         if self._ai_inflight:
             self.metadata_panel.set_save_status("AI suggestions running...", is_error=True)
             return
+        unique_paths = self._dedupe_paths(paths)
+        if not unique_paths:
+            self.metadata_panel.set_save_status("No files to save", is_error=True)
+            return
 
         self._sync_current_draft()
-        image_path = self._selected_image_path
-        description = self.metadata_panel.description_text()
-        keywords_text = self._keywords_with_current_auto_tokens(self.metadata_panel.keywords_text())
-        self._suppress_metadata_sync = True
-        try:
-            self.metadata_panel.keywords_edit.setPlainText(keywords_text)
-        finally:
-            self._suppress_metadata_sync = False
-        self._metadata_drafts[image_path] = MetadataDraft(
-            description=description,
-            keywords=keywords_text,
-        )
+        draft_snapshot = {
+            str(path): (draft.description, draft.keywords)
+            for path, draft in self._metadata_drafts.items()
+        }
 
         self._metadata_write_request_id += 1
         request_id = self._metadata_write_request_id
         self._metadata_write_job_id += 1
         job_id = self._metadata_write_job_id
 
-        self.metadata_panel.set_save_button_enabled(False)
-        self.metadata_panel.set_save_status("Saving description + keywords...")
+        self._save_inflight = True
+        self.metadata_panel.set_save_buttons_enabled(False)
+        self.metadata_panel.set_process_buttons_enabled(False)
+        self.metadata_panel.set_suggest_button_enabled(False)
+        self.preview_panel.delete_button.setEnabled(False)
+        self.metadata_panel.set_save_status(
+            f"Saving description + keywords for {len(unique_paths)} file(s) ({scope_label})..."
+        )
 
-        signals = MetadataSaveSignals()
-        signals.saved.connect(partial(self._on_metadata_saved, request_id, job_id))
-        signals.failed.connect(partial(self._on_metadata_save_failed, request_id, job_id))
+        signals = MetadataBatchSaveSignals()
+        signals.completed.connect(partial(self._on_metadata_batch_saved, request_id, job_id))
+        signals.failed.connect(partial(self._on_metadata_batch_save_failed, request_id, job_id))
 
-        task = MetadataSaveTask(
-            image_path=image_path,
-            description=description,
-            keywords_text=keywords_text,
-            service=self._metadata_write_service,
+        task = MetadataBatchSaveTask(
+            image_paths=tuple(unique_paths),
+            scope_label=scope_label,
+            draft_by_path=draft_snapshot,
+            exif_service=self._exif_service,
+            metadata_write_service=self._metadata_write_service,
             signals=signals,
         )
         self._active_metadata_write_jobs[job_id] = (task, signals)
         self._metadata_write_pool.start(task)
 
-    def _on_metadata_saved(
+    def _on_metadata_batch_saved(
         self,
         request_id: int,
         job_id: int,
-        image_path: str,
-        result: MetadataWriteResult,
+        result: MetadataBatchSaveResult,
     ) -> None:
-        """Handle successful metadata write completion."""
+        """Handle successful completion for scoped metadata save."""
         self._finish_metadata_write_job(job_id)
         if request_id != self._metadata_write_request_id:
             return
 
-        self._suppress_metadata_sync = True
-        try:
-            self.metadata_panel.keywords_edit.setPlainText(", ".join(result.keywords))
-            self.metadata_panel.description_edit.setPlainText(result.description)
-        finally:
-            self._suppress_metadata_sync = False
-        image_path_obj = Path(image_path)
-        self._metadata_drafts[image_path_obj] = MetadataDraft(
-            description=result.description,
-            keywords=", ".join(result.keywords),
-        )
-        self._restore_metadata_action_controls()
-        self.metadata_panel.set_save_status("Saved description + keywords")
-        self._start_exif_load(image_path_obj)
+        self._save_inflight = False
+        selected = self._selected_image_path
+        selected_saved = False
+        selected_keywords = ""
+        selected_description = ""
+        for item in result.outcomes:
+            if item.error:
+                continue
+            image_path = Path(item.image_path)
+            keywords_text = ", ".join(item.keywords)
+            self._metadata_drafts[image_path] = MetadataDraft(
+                description=item.description,
+                keywords=keywords_text,
+            )
+            if selected is not None and image_path == selected:
+                selected_saved = True
+                selected_keywords = keywords_text
+                selected_description = item.description
 
-    def _on_metadata_save_failed(
+        if selected_saved:
+            self._suppress_metadata_sync = True
+            try:
+                self.metadata_panel.keywords_edit.setPlainText(selected_keywords)
+                self.metadata_panel.description_edit.setPlainText(selected_description)
+            finally:
+                self._suppress_metadata_sync = False
+
+        self._restore_metadata_action_controls()
+        if result.failure_count == 0:
+            self.metadata_panel.set_save_status(
+                f"Saved description + keywords for {result.success_count}/{result.total_count} files ({result.scope_label})"
+            )
+        else:
+            first_failure = next((item for item in result.outcomes if item.error), None)
+            failure_hint = ""
+            if first_failure is not None:
+                failure_hint = f" First failure: {Path(first_failure.image_path).name}."
+            self.metadata_panel.set_save_status(
+                (
+                    f"Saved {result.success_count}/{result.total_count} files ({result.scope_label}); "
+                    f"{result.failure_count} failed.{failure_hint}"
+                ),
+                is_error=True,
+            )
+
+        if selected is not None and selected_saved:
+            self._start_exif_load(selected)
+
+    def _on_metadata_batch_save_failed(
         self,
         request_id: int,
         job_id: int,
-        _image_path: str,
         error: str,
     ) -> None:
-        """Show metadata save error to user."""
+        """Show fatal scoped metadata save error to user."""
         self._finish_metadata_write_job(job_id)
         if request_id != self._metadata_write_request_id:
             return
+        self._save_inflight = False
         self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status(f"Save failed: {error}", is_error=True)
 
@@ -487,6 +546,9 @@ class MainWindow(QMainWindow):
         """Request AI description and keyword suggestions for selected image."""
         if self._selected_image_path is None:
             self.metadata_panel.set_ai_status("No file selected", is_error=True)
+            return
+        if self._save_inflight:
+            self.metadata_panel.set_ai_status("Save already running...", is_error=True)
             return
         if self._process_inflight:
             self.metadata_panel.set_ai_status("Process already running...", is_error=True)
@@ -661,22 +723,15 @@ class MainWindow(QMainWindow):
         merged = self._merge_keywords(keywords, [token for token in auto_tokens if token])
         return ", ".join(merged)
 
-    def _keywords_with_current_auto_tokens(self, keywords_text: str) -> str:
-        """Append current selection's auto tokens to keywords."""
-        data = self._current_exif_ui_data
-        if data is None:
-            return keywords_text
-        return self._keywords_with_auto_tokens(
-            keywords_text,
-            data.art_filter_token,
-            data.camera_model,
-            data.lens_model,
-        )
-
     def _restore_metadata_action_controls(self) -> None:
         """Restore right-panel action enabled states based on app state."""
         has_selection = self._selected_image_path is not None
-        allow_actions = has_selection and not self._process_inflight and not self._ai_inflight
+        allow_actions = (
+            has_selection
+            and not self._process_inflight
+            and not self._ai_inflight
+            and not self._save_inflight
+        )
         self.metadata_panel.set_suggest_button_enabled(allow_actions)
         self.metadata_panel.set_save_button_enabled(allow_actions)
         self.metadata_panel.set_process_buttons_enabled(allow_actions)
@@ -744,6 +799,9 @@ class MainWindow(QMainWindow):
 
     def _start_process_scope(self, scope_label: str, paths: list[Path]) -> None:
         """Start one background batch process job for the requested scope."""
+        if self._save_inflight:
+            self.metadata_panel.set_save_status("Save already running...", is_error=True)
+            return
         if self._process_inflight:
             self.metadata_panel.set_save_status("Process already running...", is_error=True)
             return
@@ -861,7 +919,7 @@ class MainWindow(QMainWindow):
         """Skip selected file for this session without deleting from SD."""
         if self._selected_image_path is None:
             return
-        if self._process_inflight or self._ai_inflight:
+        if self._process_inflight or self._ai_inflight or self._save_inflight:
             return
         skipped_path = self._selected_image_path
         self.source_panel.mark_skipped(skipped_path)
@@ -869,7 +927,7 @@ class MainWindow(QMainWindow):
 
     def _on_variant_selected(self, image_path: Path) -> None:
         """Switch preview to selected capture-set variant."""
-        if self._process_inflight or self._ai_inflight:
+        if self._process_inflight or self._ai_inflight or self._save_inflight:
             return
         if image_path == self._selected_image_path:
             return
