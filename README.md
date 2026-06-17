@@ -99,6 +99,31 @@ uv run python main.py --smoke-test-ms 2000
 - Default timeline JSON path: `gps/Timeline.json`
 - Timeline cache DB: `~/Library/Application Support/phototags/timeline_cache.sqlite3`
 
+## Android 16: Export `Timeline.json` From Phone
+
+As of June 17, 2026, Google’s Timeline export flow for Android users is documented in Google Maps Help under **Manage your Google Maps Timeline (Android)**.
+
+Prerequisites:
+- Google Maps app updated (Google documents Timeline availability on Maps app `11.106+`)
+- Timeline enabled for your account/device
+
+Export steps on Android 16:
+1. Open Android `Settings`.
+2. Go to `Location` -> `Location services` -> `Timeline`.
+3. Under `Timeline`, tap `Export Timeline data`.
+4. Tap `Continue`.
+5. Choose a storage location.
+6. Tap `Save` and wait for the `Export complete` message.
+
+Move and ingest in `phototags`:
+1. Copy the exported file from the phone to your Mac.
+2. Place it in this repository as `gps/Timeline.json`.
+3. Launch the app and use GPS Suggest/Apply; ingestion is automatic.
+
+Notes:
+- If the exported filename is not exactly `Timeline.json`, rename it to `Timeline.json` after copying into `gps/`, or set `PHOTOTAGS_TIMELINE_PATH` to the file path you want to use.
+- Replacing `gps/Timeline.json` with a fresh export is sufficient; the app detects the new file signature and updates the local SQLite cache.
+
 Repository privacy protection is in place:
 - `gps/Timeline*.json` ignored
 - `*.sqlite`, `*.sqlite3` artifacts ignored
