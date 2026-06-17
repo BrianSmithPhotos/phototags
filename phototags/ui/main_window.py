@@ -120,8 +120,11 @@ class MainWindow(QMainWindow):
         self._current_exif_ui_data: ExifUiData | None = None
         self._metadata_drafts: dict[Path, MetadataDraft] = {}
         self._gps_suggestions: dict[Path, GpsSuggestion] = {}
+        self._embedded_gps_by_path: dict[Path, bool] = {}
+        self._embedded_altitude_by_path: dict[Path, bool] = {}
         self._gps_altitude_unreliable_by_path: dict[Path, bool] = {}
         self._gps_altitude_source_by_path: dict[Path, str] = {}
+        self._altitude_target_paths: tuple[Path, ...] = tuple()
         self._suppress_metadata_sync = False
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
@@ -380,6 +383,8 @@ class MainWindow(QMainWindow):
         finally:
             self._suppress_metadata_sync = False
         self._current_exif_ui_data = ui_data
+        self._embedded_gps_by_path[path_obj] = bool(ui_data.gps_latitude.strip() and ui_data.gps_longitude.strip())
+        self._embedded_altitude_by_path[path_obj] = bool(ui_data.gps_altitude.strip())
         self.metadata_panel.set_exif_dump(dump_text)
         self._metadata_drafts[path_obj] = MetadataDraft(
             description=description_text,
@@ -801,7 +806,7 @@ class MainWindow(QMainWindow):
         self._start_gps_suggest(image_path=selected, captured_at=captured_at)
 
     def _on_gps_apply_clicked(self) -> None:
-        """Apply current timeline GPS suggestion into editable GPS fields."""
+        """Apply current timeline GPS suggestion into editable GPS fields for current set."""
         selected = self._selected_image_path
         if selected is None:
             self.metadata_panel.set_gps_status("No file selected", is_error=True)
@@ -815,14 +820,50 @@ class MainWindow(QMainWindow):
         if suggestion is None:
             self.metadata_panel.set_gps_status("No GPS suggestion available", is_error=True)
             return
+
+        self._sync_current_draft()
+        target_paths = self._gps_target_paths(selected)
         timeline_altitude = suggestion.altitude_m
         altitude_unreliable = timeline_altitude is not None and suggestion.source_type != "GPS"
+        latitude_text = f"{suggestion.latitude:.7f}"
+        longitude_text = f"{suggestion.longitude:.7f}"
+        altitude_text = "" if timeline_altitude is None else f"{timeline_altitude:.2f}"
+
+        applied_paths: list[Path] = []
+        skipped_embedded = 0
+        skipped_unreadable = 0
+        for path in target_paths:
+            if self._path_has_embedded_gps(path):
+                skipped_embedded += 1
+                continue
+            draft = self._ensure_draft_for_path(path)
+            if draft is None:
+                skipped_unreadable += 1
+                continue
+            draft.gps_latitude = latitude_text
+            draft.gps_longitude = longitude_text
+            draft.gps_altitude = altitude_text
+            self._gps_altitude_unreliable_by_path[path] = altitude_unreliable
+            if altitude_unreliable:
+                self._gps_altitude_source_by_path[path] = suggestion.source_type
+            else:
+                self._gps_altitude_source_by_path.pop(path, None)
+            applied_paths.append(path)
+
+        if not applied_paths:
+            self.metadata_panel.set_gps_status(
+                "GPS apply skipped: no eligible files in capture set",
+                is_error=True,
+            )
+            self._restore_metadata_action_controls()
+            return
+
         self._suppress_metadata_sync = True
         try:
             self.metadata_panel.set_gps_fields(
-                latitude=f"{suggestion.latitude:.7f}",
-                longitude=f"{suggestion.longitude:.7f}",
-                altitude=("" if timeline_altitude is None else f"{timeline_altitude:.2f}"),
+                latitude=latitude_text,
+                longitude=longitude_text,
+                altitude=altitude_text,
             )
             self.metadata_panel.set_gps_altitude_unreliable(
                 altitude_unreliable,
@@ -830,31 +871,30 @@ class MainWindow(QMainWindow):
             )
         finally:
             self._suppress_metadata_sync = False
-        self._gps_altitude_unreliable_by_path[selected] = altitude_unreliable
-        if altitude_unreliable:
-            self._gps_altitude_source_by_path[selected] = suggestion.source_type
-        else:
-            self._gps_altitude_source_by_path.pop(selected, None)
         self._sync_current_draft()
+
+        status_parts = [f"Applied GPS to {len(applied_paths)}/{len(target_paths)} file(s) in capture set"]
         if timeline_altitude is None:
-            self.metadata_panel.set_gps_status("GPS suggestion applied; timeline altitude missing")
+            status_parts.append("timeline altitude missing")
         elif altitude_unreliable:
-            self.metadata_panel.set_gps_status(
-                f"GPS suggestion applied; altitude from {suggestion.source_type} marked as unreliable"
-            )
-        else:
-            self.metadata_panel.set_gps_status("GPS suggestion applied to editable fields")
+            status_parts.append(f"altitude from {suggestion.source_type} marked unreliable")
+        if skipped_embedded:
+            status_parts.append(f"{skipped_embedded} skipped (existing EXIF GPS)")
+        if skipped_unreadable:
+            status_parts.append(f"{skipped_unreadable} skipped (metadata unreadable)")
+        self.metadata_panel.set_gps_status("; ".join(status_parts))
         self._restore_metadata_action_controls()
         if timeline_altitude is None and self.metadata_panel.auto_altitude_lookup_enabled():
             self._start_altitude_lookup(
                 image_path=selected,
                 latitude=suggestion.latitude,
                 longitude=suggestion.longitude,
-                reason="Timeline altitude missing; looking up elevation...",
+                target_paths=tuple(applied_paths),
+                reason=f"Timeline altitude missing; looking up elevation for {len(applied_paths)} file(s)...",
             )
 
     def _on_lookup_altitude_clicked(self) -> None:
-        """Lookup and fill missing altitude for current GPS coordinates."""
+        """Lookup and fill missing altitude for current capture set."""
         selected = self._selected_image_path
         if selected is None:
             self.metadata_panel.set_gps_status("No file selected", is_error=True)
@@ -868,9 +908,6 @@ class MainWindow(QMainWindow):
         if self._ai_inflight:
             self.metadata_panel.set_gps_status("AI suggestions running...", is_error=True)
             return
-        if self._current_exif_ui_data is not None and self._current_exif_ui_data.gps_altitude.strip():
-            self.metadata_panel.set_gps_status("Existing EXIF altitude found; lookup skipped")
-            return
 
         latitude, longitude = self._current_gps_lat_lon()
         if latitude is None or longitude is None:
@@ -880,11 +917,43 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self._sync_current_draft()
+        target_paths = self._gps_target_paths(selected)
+        eligible_paths: list[Path] = []
+        skipped_embedded_altitude = 0
+        skipped_unreadable = 0
+        already_has_altitude = 0
+        for path in target_paths:
+            if self._path_has_embedded_altitude(path):
+                skipped_embedded_altitude += 1
+                continue
+            draft = self._ensure_draft_for_path(path)
+            if draft is None:
+                skipped_unreadable += 1
+                continue
+            if draft.gps_altitude.strip():
+                already_has_altitude += 1
+                continue
+            eligible_paths.append(path)
+
+        if not eligible_paths:
+            self.metadata_panel.set_gps_status(
+                "Altitude lookup skipped: no files need altitude updates"
+            )
+            return
+
         self._start_altitude_lookup(
             image_path=selected,
             latitude=latitude,
             longitude=longitude,
-            reason="Looking up altitude from elevation service...",
+            target_paths=tuple(eligible_paths),
+            reason=(
+                f"Looking up altitude for {len(eligible_paths)} file(s)"
+                + ("" if skipped_embedded_altitude == 0 else f" ({skipped_embedded_altitude} already had EXIF altitude)")
+                + ("" if already_has_altitude == 0 else f" ({already_has_altitude} already had edited altitude)")
+                + ("" if skipped_unreadable == 0 else f" ({skipped_unreadable} metadata unreadable)")
+                + "..."
+            ),
         )
 
     def _start_gps_suggest(self, *, image_path: Path, captured_at: str) -> None:
@@ -921,6 +990,7 @@ class MainWindow(QMainWindow):
         image_path: Path,
         latitude: float,
         longitude: float,
+        target_paths: tuple[Path, ...] | None = None,
         reason: str,
     ) -> None:
         """Start background elevation lookup for one coordinate pair."""
@@ -931,6 +1001,7 @@ class MainWindow(QMainWindow):
 
         self.metadata_panel.set_gps_status(reason)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
+        self._altitude_target_paths = tuple(target_paths or (image_path,))
 
         signals = ElevationLookupSignals()
         signals.looked_up.connect(partial(self._on_altitude_looked_up, request_id, job_id))
@@ -953,7 +1024,7 @@ class MainWindow(QMainWindow):
         image_path: str,
         altitude_m: float,
     ) -> None:
-        """Apply looked-up altitude when field is currently blank."""
+        """Apply looked-up altitude for current capture set."""
         self._finish_altitude_job(job_id)
         if request_id != self._altitude_request_id:
             return
@@ -961,25 +1032,48 @@ class MainWindow(QMainWindow):
         path_obj = Path(image_path)
         if path_obj != self._selected_image_path:
             return
-        if self._current_exif_ui_data is not None and self._current_exif_ui_data.gps_altitude.strip():
-            self.metadata_panel.set_gps_status("Existing EXIF altitude found; lookup result ignored")
-            self._restore_metadata_action_controls()
-            return
-        if self.metadata_panel.gps_altitude_text():
-            self.metadata_panel.set_gps_status("Altitude already set; lookup result not applied")
-            self._restore_metadata_action_controls()
-            return
 
-        self._suppress_metadata_sync = True
-        try:
-            self.metadata_panel.gps_altitude_edit.setText(f"{altitude_m:.2f}")
-            self.metadata_panel.set_gps_altitude_unreliable(False)
-        finally:
-            self._suppress_metadata_sync = False
-        self._gps_altitude_unreliable_by_path[path_obj] = False
-        self._gps_altitude_source_by_path.pop(path_obj, None)
-        self._sync_current_draft()
-        self.metadata_panel.set_gps_status(f"Altitude filled from lookup: {altitude_m:.2f} m")
+        targets = self._altitude_target_paths or (path_obj,)
+        altitude_text = f"{altitude_m:.2f}"
+        applied_count = 0
+        skipped_existing = 0
+        skipped_unreadable = 0
+        selected_applied = False
+        for path in targets:
+            if self._path_has_embedded_altitude(path):
+                skipped_existing += 1
+                continue
+            draft = self._ensure_draft_for_path(path)
+            if draft is None:
+                skipped_unreadable += 1
+                continue
+            if draft.gps_altitude.strip():
+                continue
+            draft.gps_altitude = altitude_text
+            self._gps_altitude_unreliable_by_path[path] = False
+            self._gps_altitude_source_by_path.pop(path, None)
+            applied_count += 1
+            if path == path_obj:
+                selected_applied = True
+
+        if selected_applied:
+            self._suppress_metadata_sync = True
+            try:
+                self.metadata_panel.gps_altitude_edit.setText(altitude_text)
+                self.metadata_panel.set_gps_altitude_unreliable(False)
+            finally:
+                self._suppress_metadata_sync = False
+            self._sync_current_draft()
+
+        if applied_count == 0:
+            self.metadata_panel.set_gps_status("Altitude lookup returned, but no files needed updates")
+        else:
+            status_parts = [f"Altitude filled for {applied_count}/{len(targets)} file(s): {altitude_text} m"]
+            if skipped_existing:
+                status_parts.append(f"{skipped_existing} skipped (existing EXIF altitude)")
+            if skipped_unreadable:
+                status_parts.append(f"{skipped_unreadable} skipped (metadata unreadable)")
+            self.metadata_panel.set_gps_status("; ".join(status_parts))
         self._restore_metadata_action_controls()
 
     def _on_altitude_lookup_failed(
@@ -1090,6 +1184,81 @@ class MainWindow(QMainWindow):
             return selected_path, (selected_path,)
         return group.representative_path, tuple(group.members)
 
+    def _gps_target_paths(self, selected_path: Path) -> tuple[Path, ...]:
+        """Return capture-set members for GPS/altitude apply actions."""
+        group = self._group_by_path.get(selected_path)
+        if group is None:
+            return (selected_path,)
+        return tuple(group.members)
+
+    def _path_has_embedded_gps(self, path: Path) -> bool:
+        """Return True when a file already has EXIF latitude and longitude."""
+        if path == self._selected_image_path and self._current_exif_ui_data is not None:
+            has_value = bool(
+                self._current_exif_ui_data.gps_latitude.strip()
+                and self._current_exif_ui_data.gps_longitude.strip()
+            )
+            self._embedded_gps_by_path[path] = has_value
+            return has_value
+        if path in self._embedded_gps_by_path:
+            return self._embedded_gps_by_path[path]
+        draft = self._ensure_draft_for_path(path)
+        if draft is None:
+            self._embedded_gps_by_path[path] = True
+            return True
+        return self._embedded_gps_by_path.get(path, False)
+
+    def _path_has_embedded_altitude(self, path: Path) -> bool:
+        """Return True when a file already has EXIF altitude."""
+        if path == self._selected_image_path and self._current_exif_ui_data is not None:
+            has_value = bool(self._current_exif_ui_data.gps_altitude.strip())
+            self._embedded_altitude_by_path[path] = has_value
+            return has_value
+        if path in self._embedded_altitude_by_path:
+            return self._embedded_altitude_by_path[path]
+        draft = self._ensure_draft_for_path(path)
+        if draft is None:
+            self._embedded_altitude_by_path[path] = True
+            return True
+        return self._embedded_altitude_by_path.get(path, False)
+
+    def _ensure_draft_for_path(self, path: Path) -> MetadataDraft | None:
+        """Ensure draft exists for a path; return None when EXIF cannot be read."""
+        existing = self._metadata_drafts.get(path)
+        if existing is not None:
+            return existing
+        if path == self._selected_image_path and self._current_exif_ui_data is not None:
+            draft = MetadataDraft(
+                description=self.metadata_panel.description_text(),
+                keywords=self.metadata_panel.keywords_text(),
+                gps_latitude=self.metadata_panel.gps_latitude_text(),
+                gps_longitude=self.metadata_panel.gps_longitude_text(),
+                gps_altitude=self.metadata_panel.gps_altitude_text(),
+            )
+            self._metadata_drafts[path] = draft
+            return draft
+        try:
+            metadata = self._exif_service.read_full_metadata(path)
+            ui_data = self._exif_service.map_for_ui(metadata)
+        except RuntimeError:
+            return None
+        self._embedded_gps_by_path[path] = bool(ui_data.gps_latitude.strip() and ui_data.gps_longitude.strip())
+        self._embedded_altitude_by_path[path] = bool(ui_data.gps_altitude.strip())
+        draft = MetadataDraft(
+            description=ui_data.description,
+            keywords=self._keywords_with_auto_tokens(
+                ui_data.keywords,
+                ui_data.art_filter_token,
+                ui_data.camera_model,
+                ui_data.lens_model,
+            ),
+            gps_latitude=ui_data.gps_latitude,
+            gps_longitude=ui_data.gps_longitude,
+            gps_altitude=ui_data.gps_altitude,
+        )
+        self._metadata_drafts[path] = draft
+        return draft
+
     def _keywords_with_auto_tokens(
         self,
         keywords_text: str,
@@ -1122,18 +1291,16 @@ class MainWindow(QMainWindow):
             and self._selected_image_path in self._gps_suggestions
         )
         self.metadata_panel.set_gps_apply_button_enabled(allow_gps_actions and has_suggestion)
-        existing_exif_altitude = bool(
-            self._current_exif_ui_data is not None
-            and self._current_exif_ui_data.gps_altitude.strip()
-        )
         lat_value, lon_value = self._current_gps_lat_lon()
+        selected = self._selected_image_path
+        lookup_target_paths = self._gps_target_paths(selected) if selected is not None else tuple()
+        has_lookup_target = any(not self._path_has_embedded_altitude(path) for path in lookup_target_paths)
         self.metadata_panel.set_lookup_altitude_button_enabled(
             allow_actions
             and lat_value is not None
             and lon_value is not None
-            and not existing_exif_altitude
+            and has_lookup_target
         )
-        selected = self._selected_image_path
         group = self._group_by_path.get(selected) if selected is not None else None
         has_capture_set = group is not None and len(group.members) > 1
         self.preview_panel.skip_single_button.setEnabled(allow_actions)

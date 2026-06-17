@@ -181,7 +181,7 @@ class MetadataPanel(QWidget):
         self.suggest_gps_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         gps_button_row.addWidget(self.suggest_gps_button, 1)
 
-        self.apply_gps_button = QPushButton("Apply Suggested GPS")
+        self.apply_gps_button = QPushButton("Apply Suggested GPS To Set")
         self.apply_gps_button.setEnabled(False)
         self.apply_gps_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         gps_button_row.addWidget(self.apply_gps_button, 1)
@@ -205,7 +205,7 @@ class MetadataPanel(QWidget):
         gps_form.addRow("Alt (m)", self.gps_altitude_edit)
         layout.addLayout(gps_form)
 
-        self.lookup_altitude_button = QPushButton("Lookup Altitude")
+        self.lookup_altitude_button = QPushButton("Lookup Altitude For Set")
         self.lookup_altitude_button.setEnabled(False)
         layout.addWidget(self.lookup_altitude_button)
 
