@@ -17,10 +17,92 @@ from urllib.request import Request, urlopen
 from PIL import Image
 
 OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
-OLLAMA_DEFAULT_MODEL = os.getenv("PHOTOTAGS_OLLAMA_MODEL", "llava")
-OLLAMA_TIMEOUT_SECONDS = 90
+OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags"
+OLLAMA_DEFAULT_MODEL = os.getenv("PHOTOTAGS_OLLAMA_MODEL", "qwen3.6:35b")
+OLLAMA_TIMEOUT_SECONDS = 180
 MAX_IMAGE_EDGE = 1600
 JPEG_QUALITY = 85
+FALLBACK_CROP_SCALE = 0.72
+FALLBACK_MIN_DIMENSION = 900
+SUBJECT_NOUN_TOKENS = {
+    "animal",
+    "bear",
+    "bird",
+    "buck",
+    "butterfly",
+    "cat",
+    "cormorant",
+    "crane",
+    "deer",
+    "dog",
+    "duck",
+    "eagle",
+    "egret",
+    "falcon",
+    "finch",
+    "flower",
+    "fox",
+    "frog",
+    "gull",
+    "hawk",
+    "heron",
+    "ibis",
+    "iris",
+    "kingfisher",
+    "lily",
+    "mammal",
+    "moth",
+    "orchid",
+    "otter",
+    "owl",
+    "pelican",
+    "plant",
+    "plover",
+    "poppy",
+    "rabbit",
+    "raven",
+    "robin",
+    "rose",
+    "sandpiper",
+    "seal",
+    "sparrow",
+    "squirrel",
+    "swallow",
+    "tern",
+    "tree",
+    "warbler",
+    "wildlife",
+}
+GENERIC_SUBJECT_TERMS = {
+    "animal",
+    "animals",
+    "avian",
+    "bird",
+    "birds",
+    "fauna",
+    "flora",
+    "flower",
+    "flowers",
+    "nature",
+    "plant",
+    "plants",
+    "wildlife",
+}
+DOMAIN_HINT_TOKENS = {
+    "animal",
+    "animals",
+    "avian",
+    "bird",
+    "birds",
+    "fauna",
+    "flora",
+    "flower",
+    "flowers",
+    "plant",
+    "plants",
+    "species",
+    "wildlife",
+}
 
 
 @dataclass(slots=True)
@@ -29,6 +111,8 @@ class AiSuggestionResult:
 
     description: str
     keywords: list[str]
+    refinement_attempted: bool = False
+    refinement_applied: bool = False
 
 
 class AiSuggestionError(RuntimeError):
@@ -37,6 +121,9 @@ class AiSuggestionError(RuntimeError):
 
 class AiSuggestionService:
     """Request local AI suggestions from Ollama."""
+
+    def __init__(self) -> None:
+        self._vision_capability_cache: dict[str, bool] = {}
 
     def suggest_for_image(
         self,
@@ -48,39 +135,55 @@ class AiSuggestionService:
         capture_context: str = "",
     ) -> AiSuggestionResult:
         """Generate description and keyword suggestions for one image."""
-        image_b64 = self._image_base64(image_path)
-        prompt = self._build_prompt(
+        self._ensure_model_supports_vision(model)
+        source_image_bytes = self._read_previewable_image_bytes(image_path)
+        prompt = self._build_primary_prompt(
             existing_keywords_text=existing_keywords_text,
             existing_description=existing_description,
             capture_context=capture_context,
         )
-        payload = {
-            "model": model,
-            "stream": False,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a photography metadata assistant. "
-                        "Return only strict JSON with keys description and keywords."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [image_b64],
-                },
-            ],
-            "options": {
-                "temperature": 0.2,
-            },
-        }
+        primary = self._suggest_from_image_bytes(
+            model=model,
+            prompt=prompt,
+            image_bytes=source_image_bytes,
+        )
+        if not self._needs_subject_crop_refinement(primary):
+            return primary
 
-        response = self._ollama_chat(payload=payload)
-        content = self._extract_message_content(response)
-        return self._parse_result(content)
+        crop_payloads = self._subject_focus_crop_payloads(image_bytes=source_image_bytes)
+        if not crop_payloads:
+            return self._result_with_refinement_flags(
+                primary,
+                attempted=True,
+                applied=False,
+            )
 
-    def _build_prompt(
+        refinement_prompt = self._build_crop_refinement_prompt(
+            primary_result=primary,
+            existing_keywords_text=existing_keywords_text,
+            existing_description=existing_description,
+            capture_context=capture_context,
+        )
+        try:
+            refined = self._suggest_from_base64_payloads(
+                model=model,
+                prompt=refinement_prompt,
+                image_payloads=crop_payloads,
+            )
+        except AiSuggestionError:
+            return self._result_with_refinement_flags(
+                primary,
+                attempted=True,
+                applied=False,
+            )
+        merged, refinement_applied = self._merge_primary_refined(primary=primary, refined=refined)
+        return self._result_with_refinement_flags(
+            merged,
+            attempted=True,
+            applied=refinement_applied,
+        )
+
+    def _build_primary_prompt(
         self,
         *,
         existing_keywords_text: str,
@@ -95,13 +198,100 @@ class AiSuggestionService:
             "2) keywords: 10 to 15 short keywords, lowercase strings.\n"
             "3) If birds, flowers, animals, or landmarks are visible, include likely "
             "common names and scientific names where possible.\n"
-            "4) Do not include duplicates.\n"
-            "5) Output only JSON in this exact shape:\n"
+            "4) If an animal, bird, plant, or flower is visible, description must explicitly "
+            "name the most "
+            "specific likely subject (for example: snowy egret), not only generic terms "
+            "like bird, animal, plant, or flower.\n"
+            "5) If uncertain on species, use 'likely <species>' in the description rather "
+            "than omitting identification.\n"
+            "6) Do not include duplicates.\n"
+            "7) Do not describe the image as monochrome, black-and-white, or grayscale "
+            "unless you are very confident there is effectively no color information.\n"
+            "8) If colors are subtle or dull, describe that as muted/low-saturation color "
+            "instead of monochrome.\n"
+            "9) Output only JSON in this exact shape:\n"
             '{"description":"...","keywords":["k1","k2"]}\n'
             f"Existing keywords (optional context): {existing_keywords_text or '(none)'}\n"
             f"Existing description (optional context): {existing_description or '(none)'}\n"
             f"Capture context (optional): {capture_context or '(none)'}\n"
         )
+
+    def _build_crop_refinement_prompt(
+        self,
+        *,
+        primary_result: AiSuggestionResult,
+        existing_keywords_text: str,
+        existing_description: str,
+        capture_context: str,
+    ) -> str:
+        """Build fallback prompt for crop-focused subject refinement."""
+        return (
+            "You are reviewing cropped regions from the same photo to refine subject identification.\n"
+            "Prior full-image result may have missed subject specificity.\n"
+            "Requirements:\n"
+            "1) description: one concise sentence, max 30 words.\n"
+            "2) If an animal, bird, plant, or flower is visible, description must include "
+            "the most specific likely identity.\n"
+            "3) If uncertain, use 'likely <species>' language instead of a generic label.\n"
+            "4) keywords: 10 to 15 short keywords, lowercase strings, include scientific names "
+            "where possible.\n"
+            "5) Output only JSON in this exact shape:\n"
+            '{"description":"...","keywords":["k1","k2"]}\n'
+            f"Prior description: {primary_result.description}\n"
+            f"Prior keywords: {', '.join(primary_result.keywords)}\n"
+            f"Existing keywords (optional context): {existing_keywords_text or '(none)'}\n"
+            f"Existing description (optional context): {existing_description or '(none)'}\n"
+            f"Capture context (optional): {capture_context or '(none)'}\n"
+        )
+
+    def _suggest_from_image_bytes(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        image_bytes: bytes,
+    ) -> AiSuggestionResult:
+        """Run one suggestion request from raw image bytes."""
+        image_payload = self._to_image_base64(image_bytes=image_bytes)
+        return self._suggest_from_base64_payloads(
+            model=model,
+            prompt=prompt,
+            image_payloads=[image_payload],
+        )
+
+    def _suggest_from_base64_payloads(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        image_payloads: list[str],
+    ) -> AiSuggestionResult:
+        """Run one suggestion request from prepared base64 image payloads."""
+        payload = {
+            "model": model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a photography metadata assistant. "
+                        "Return only strict JSON with keys description and keywords."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "images": image_payloads,
+                },
+            ],
+            "options": {
+                "temperature": 0.2,
+            },
+        }
+
+        response = self._ollama_chat(payload=payload)
+        content = self._extract_message_content(response)
+        return self._parse_result(content)
 
     def _ollama_chat(self, *, payload: dict[str, Any]) -> dict[str, Any]:
         """Execute one non-streaming chat request against local Ollama."""
@@ -131,6 +321,81 @@ class AiSuggestionService:
         error_text = self._to_text(parsed.get("error"))
         if error_text:
             raise AiSuggestionError(error_text)
+        return parsed
+
+    def _ensure_model_supports_vision(self, model: str) -> None:
+        """Validate that selected Ollama model includes vision capability."""
+        normalized_model = model.strip()
+        if not normalized_model:
+            raise AiSuggestionError("No Ollama model selected")
+
+        cached = self._vision_capability_cache.get(normalized_model)
+        if cached is not None:
+            if not cached:
+                raise AiSuggestionError(
+                    f"Ollama model '{normalized_model}' does not support vision. "
+                    "Choose a model with vision capability."
+                )
+            return
+
+        tags_payload = self._ollama_tags()
+        models = tags_payload.get("models")
+        if not isinstance(models, list):
+            raise AiSuggestionError("Invalid model list from Ollama /api/tags")
+
+        matched_capabilities: list[str] | None = None
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            names = {
+                self._to_text(item.get("name")).strip(),
+                self._to_text(item.get("model")).strip(),
+            }
+            if normalized_model not in names:
+                continue
+            caps = item.get("capabilities")
+            if isinstance(caps, list):
+                matched_capabilities = [self._to_text(entry).strip().casefold() for entry in caps]
+            else:
+                matched_capabilities = []
+            break
+
+        if matched_capabilities is None:
+            raise AiSuggestionError(
+                f"Ollama model '{normalized_model}' was not found in /api/tags. "
+                "Confirm the model is installed."
+            )
+
+        has_vision = "vision" in matched_capabilities
+        self._vision_capability_cache[normalized_model] = has_vision
+        if not has_vision:
+            raise AiSuggestionError(
+                f"Ollama model '{normalized_model}' does not support vision. "
+                "Choose a model with vision capability."
+            )
+
+    def _ollama_tags(self) -> dict[str, Any]:
+        """Read local Ollama installed model metadata from /api/tags."""
+        request = Request(
+            OLLAMA_TAGS_URL,
+            headers={"Content-Type": "application/json"},
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=OLLAMA_TIMEOUT_SECONDS) as response:
+                body = response.read().decode("utf-8")
+        except URLError as exc:
+            raise AiSuggestionError(
+                "Could not reach Ollama at http://127.0.0.1:11434 while checking model capabilities."
+            ) from exc
+        except TimeoutError as exc:
+            raise AiSuggestionError("Ollama /api/tags request timed out") from exc
+
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise AiSuggestionError("Invalid JSON response from Ollama /api/tags") from exc
+
         return parsed
 
     def _extract_message_content(self, response: dict[str, Any]) -> str:
@@ -205,11 +470,173 @@ class AiSuggestionService:
             normalized.append(cleaned)
         return normalized
 
+    def _needs_subject_crop_refinement(self, result: AiSuggestionResult) -> bool:
+        """Return True when keyword subjects are not represented in description."""
+        subject_candidates = self._subject_candidates_from_keywords(result.keywords)
+        if not subject_candidates:
+            return False
+        return not self._description_mentions_subject(result.description, subject_candidates)
+
+    def _subject_candidates_from_keywords(self, keywords: list[str]) -> list[str]:
+        """Extract likely subject-identification keyword candidates."""
+        normalized_keywords = [self._normalized_phrase(keyword) for keyword in keywords]
+        domain_hint_present = any(
+            any(token in DOMAIN_HINT_TOKENS for token in keyword.split())
+            for keyword in normalized_keywords
+            if keyword
+        )
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for normalized in normalized_keywords:
+            if not normalized or normalized in GENERIC_SUBJECT_TERMS:
+                continue
+            tokens = normalized.split()
+            is_scientific = len(tokens) == 2 and all(token.isalpha() for token in tokens)
+            last_token = tokens[-1] if tokens else ""
+            has_subject_noun = last_token in SUBJECT_NOUN_TOKENS or normalized in SUBJECT_NOUN_TOKENS
+            if is_scientific and not domain_hint_present:
+                is_scientific = False
+            if not is_scientific and not has_subject_noun:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            candidates.append(normalized)
+        return candidates
+
+    def _description_mentions_subject(self, description: str, candidates: list[str]) -> bool:
+        """Return True when description references one of candidate subjects."""
+        text = self._normalized_phrase(description)
+        if not text:
+            return False
+        for candidate in candidates:
+            if self._contains_phrase(text, candidate):
+                return True
+            tokens = candidate.split()
+            if len(tokens) > 1 and tokens[-1] in SUBJECT_NOUN_TOKENS:
+                if self._contains_phrase(text, tokens[-1]):
+                    return True
+        return False
+
+    def _contains_phrase(self, text: str, phrase: str) -> bool:
+        """Check phrase containment using word-boundary matching."""
+        if not phrase:
+            return False
+        pattern = r"\b" + re.escape(phrase) + r"\b"
+        return re.search(pattern, text) is not None
+
+    def _merge_primary_refined(
+        self,
+        *,
+        primary: AiSuggestionResult,
+        refined: AiSuggestionResult,
+    ) -> tuple[AiSuggestionResult, bool]:
+        """Merge first-pass and crop-refined suggestion into one output."""
+        primary_subjects = self._subject_candidates_from_keywords(primary.keywords)
+        refined_subjects = self._subject_candidates_from_keywords(refined.keywords)
+        combined_subjects = self._merge_keywords(primary_subjects, refined_subjects)
+        description = primary.description
+        description_replaced = False
+        if combined_subjects and self._description_mentions_subject(refined.description, combined_subjects):
+            description = refined.description
+            description_replaced = True
+        keywords = self._merge_keywords(primary.keywords, refined.keywords)
+        keywords_changed = [item.casefold() for item in keywords] != [item.casefold() for item in primary.keywords]
+        merged = AiSuggestionResult(description=description, keywords=keywords)
+        return merged, (description_replaced or keywords_changed)
+
+    def _result_with_refinement_flags(
+        self,
+        result: AiSuggestionResult,
+        *,
+        attempted: bool,
+        applied: bool,
+    ) -> AiSuggestionResult:
+        """Copy suggestion result with refinement debug flags."""
+        return AiSuggestionResult(
+            description=result.description,
+            keywords=list(result.keywords),
+            refinement_attempted=attempted,
+            refinement_applied=applied,
+        )
+
+    def _merge_keywords(self, primary: list[str], secondary: list[str]) -> list[str]:
+        """Merge keyword lists preserving order and removing duplicates."""
+        merged: list[str] = []
+        seen: set[str] = set()
+        for keyword in [*primary, *secondary]:
+            cleaned = keyword.strip()
+            if not cleaned:
+                continue
+            lowered = cleaned.casefold()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            merged.append(cleaned)
+        return merged
+
     def _image_base64(self, image_path: Path) -> str:
         """Load a viewable image payload for Ollama vision inference."""
         image_bytes = self._read_previewable_image_bytes(image_path)
+        return self._to_image_base64(image_bytes=image_bytes)
+
+    def _to_image_base64(self, *, image_bytes: bytes) -> str:
+        """Encode bytes as a compact model-ready base64 JPEG."""
         optimized = self._to_web_jpeg(image_bytes=image_bytes)
         return base64.b64encode(optimized).decode("ascii")
+
+    def _subject_focus_crop_payloads(self, *, image_bytes: bytes) -> list[str]:
+        """Build deterministic crop payloads for fallback subject refinement."""
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                rgb = img.convert("RGB")
+                width, height = rgb.size
+                if min(width, height) < FALLBACK_MIN_DIMENSION:
+                    return []
+
+                crop_width = max(1, int(width * FALLBACK_CROP_SCALE))
+                crop_height = max(1, int(height * FALLBACK_CROP_SCALE))
+                center_left = max(0, (width - crop_width) // 2)
+                center_top = max(0, (height - crop_height) // 2)
+                max_left = max(0, width - crop_width)
+                max_top = max(0, height - crop_height)
+
+                anchors = [
+                    (center_left, center_top),
+                    (0, center_top),
+                    (max_left, center_top),
+                    (center_left, 0),
+                    (center_left, max_top),
+                ]
+
+                payloads: list[str] = []
+                seen_boxes: set[tuple[int, int, int, int]] = set()
+                for left, top in anchors:
+                    box = (
+                        int(max(0, min(left, max_left))),
+                        int(max(0, min(top, max_top))),
+                        int(max(0, min(left, max_left))) + crop_width,
+                        int(max(0, min(top, max_top))) + crop_height,
+                    )
+                    if box in seen_boxes:
+                        continue
+                    seen_boxes.add(box)
+                    crop = rgb.crop(box)
+                    payloads.append(self._to_image_base64(image_bytes=self._pil_to_jpeg_bytes(crop)))
+                return payloads
+        except OSError:
+            return []
+
+    def _pil_to_jpeg_bytes(self, image: Image.Image) -> bytes:
+        """Encode a PIL image to JPEG bytes without additional resizing."""
+        output = io.BytesIO()
+        image.save(
+            output,
+            format="JPEG",
+            quality=JPEG_QUALITY,
+            optimize=True,
+        )
+        return output.getvalue()
 
     def _read_previewable_image_bytes(self, image_path: Path) -> bytes:
         """Read source image or extract preview image from RAW."""
@@ -245,6 +672,12 @@ class AiSuggestionService:
                 return output.getvalue()
         except OSError as exc:
             raise AiSuggestionError("Unable to decode image for AI suggestions") from exc
+
+    def _normalized_phrase(self, value: str) -> str:
+        """Normalize text for lightweight comparison checks."""
+        lowered = value.casefold()
+        cleaned = re.sub(r"[^a-z0-9 ]+", " ", lowered)
+        return re.sub(r"\s+", " ", cleaned).strip()
 
     def _to_text(self, value: Any) -> str:
         """Convert arbitrary value to text."""

@@ -44,7 +44,7 @@ class ImagePreviewWidget(QWidget):
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         title = QLabel("Image Preview")
         title.setObjectName("panelTitle")
@@ -104,8 +104,8 @@ class ImagePreviewWidget(QWidget):
         self.variant_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.variant_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.variant_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.variant_scroll.setMinimumHeight(52)
-        self.variant_scroll.setMaximumHeight(52)
+        self.variant_scroll.setMinimumHeight(64)
+        self.variant_scroll.setMaximumHeight(64)
 
         self.variant_container = QWidget()
         self.variant_layout = QHBoxLayout(self.variant_container)
@@ -226,13 +226,13 @@ class ImagePreviewWidget(QWidget):
             button.setCheckable(True)
             button.setAutoExclusive(True)
             button.setChecked(selected_path is not None and path == selected_path)
-            button.setFixedSize(78, 56)
+            button.setFixedSize(82, 60)
             button.setToolTip(path.name)
 
             thumb = thumb_map.get(path)
             if thumb is not None and not thumb.isNull():
                 button.setIcon(QIcon(thumb))
-                button.setIconSize(QSize(66, 44))
+                button.setIconSize(QSize(72, 50))
             else:
                 suffix = path.suffix.upper().replace(".", "") or "IMG"
                 button.setText(suffix)

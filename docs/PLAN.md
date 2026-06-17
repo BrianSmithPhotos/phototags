@@ -133,9 +133,9 @@
 
 ## Phase 2
 
-- [ ] Group related ORF/JPG variants into one capture set.
+- [x] Group related ORF/JPG variants into one capture set.
   - Test: sample captures show grouped stack entries in thumbnail area.
-- [ ] Enable browsing inside a group (up to 10 variants) while keeping one primary preview.
+- [x] Enable browsing inside a group (up to 10 variants) while keeping one primary preview.
   - Test: switching variant updates preview and metadata target correctly.
 
 ### Phase 2 persisted decisions (restart snapshot)
@@ -180,7 +180,7 @@
 - Startup wiring fix: initial folder grouping is now explicitly triggered after signal connections in `MainWindow`, so first-load folders are grouped without requiring a manual folder change.
 - Added optional grouping debug output controlled by `PHOTOTAGS_GROUP_DEBUG` (`1/true/yes`):
   - prints computed group strategy, key text, and group members to stdout for inspection.
-- Current behavior remains file-level for Save/Process actions; group-level apply behavior is deferred to the next Phase 2 step.
+- Save/Process actions remain file-level; AI suggestion apply now runs group-level and writes editable per-file drafts.
 
 ## Ollama models - which are best for image description, segmentation, bird identification - local machine 128GB M1 Unified memory
 
@@ -188,17 +188,32 @@
   - Test: results table includes speed, memory use, and output quality on a fixed sample set.
 - [ ] Define prompt templates for title/description/keywords suggestions.
   - Test: templates produce consistent JSON-like structured output for 20 sample images.
-- [x] Add optional suggestion panel for AI-assisted review:
-  - description is populated directly into Description for in-place editing
-  - keywords are shown in a separate suggested box and only merged into Keywords when user clicks apply
-  - Test: user can iterate AI suggestions, edit description manually, and selectively merge keyword suggestions.
+- [x] Add group-aware AI suggestion flow for Phase 2:
+  - one AI pass per capture group using the representative image
+  - description and keywords are directly applied to each file as editable per-image drafts
+  - Test: switch between variants and verify per-file edits persist before save/process.
+- [x] Add model selection and capability validation:
+  - UI model input field added; default model now `qwen3.6:35b`
+  - preflight check against Ollama `/api/tags` ensures selected model supports `vision`
+  - Test: choosing a non-vision model returns a clear UI error before inference.
+- [x] Add prompt and inference quality refinements:
+  - strengthened rules for species naming in description (bird/animal/plant/flower)
+  - reduced false monochrome descriptions for muted-color images
+  - two-pass fallback (full image + subject-focused crops) when subject keywords are missing from description
+  - Test: when fallback triggers, status line indicates `crop-refinement attempted/applied`.
 
-### Phase 2 initial implementation notes (in progress)
+### Phase 2 AI implementation notes (updated)
 
 - Added local Ollama suggestion flow (`Suggest Description + Keywords`) using a background worker.
-- Added read-only "suggested keywords" panel plus `Add Suggested -> Keywords` merge action.
-- Description suggestions are written directly into the editable Description field, matching current workflow preference.
-- Default Ollama model is `llava` and can be overridden with `PHOTOTAGS_OLLAMA_MODEL`.
+- AI now runs at capture-group level and applies to all group members as individual editable drafts.
+- Description and keywords are both written directly into the editable fields; separate suggested-keywords UI was removed to reclaim right-panel space.
+- Art filter token is auto-added to keywords (when present) before AI keyword append.
+- Default Ollama model is now `qwen3.6:35b` and can still be overridden with `PHOTOTAGS_OLLAMA_MODEL`.
+- Added model capability pre-check (`vision` required) to prevent silent bad outputs when text-only models are selected.
+- Added two-pass fallback for difficult wildlife/botanical IDs:
+  - pass 1 on representative full image
+  - fallback pass on deterministic tighter crops when subject keywords are not reflected in description
+  - merged result keeps keyword de-duplication and reports refinement debug status in UI.
 
 ### Suggested Ollama vision models to benchmark first (M1 Ultra 128GB)
 
@@ -231,8 +246,67 @@
 
 - [ ] Confirm final grouping key after field test batches (including multi-exposure and stacked images).
   - Test: grouping key correctly merges expected ORF/JPG pairs on sample media with low false merges.
-- [ ] Add UI indicator of grouped set size and selected variant.
+- [x] Add UI indicator of grouped set size and selected variant.
   - Test: grouped entries display count and selected item clearly.
+
+### Set UI refinements (completed)
+
+- Capture-set thumbnail strip in preview panel was increased in height to avoid bottom clipping of variant thumbnails/buttons.
+- Variant controls were nudged upward by tightening local panel spacing.
+
+## Location Enrichment (Planning Only) - Timeline.json
+
+- [ ] Define a location ingestion contract from `gps/Timeline.json`.
+  - Test: parser extracts normalized points + visits + activities with UTC timestamps and lat/lon floats.
+- [ ] Define photo-to-location matching strategy.
+  - Test: known photo capture times resolve to nearest timeline point/visit with confidence labels.
+- [ ] Decide cache/persistence approach for timeline data.
+  - Test: repeat runs avoid full 78MB reparsing unless source file changed.
+- [ ] Define UI integration for location suggestions (non-destructive).
+  - Test: location suggestion can prefill batch `Location` field and remain user-editable.
+
+### Timeline.json observations (current sample)
+
+- File size: ~78.6MB (`gps/Timeline.json`).
+- Segment count: `34,892` semantic segments.
+- Segment composition:
+  - `timelinePath`: `12,885` segments (`167,704` path points total)
+  - `visit`: `10,962` segments
+  - `activity`: `10,936` segments
+- Coordinates are encoded as strings with degree symbols (example: `"47.5554554°, -122.0495129°"`), so parsing/normalization is required.
+- Time fields are ISO timestamps with offsets; some segments also include explicit `TimezoneUtcOffsetMinutes`.
+
+### Proposed consumption pipeline (no code yet)
+
+- Step 1: Parse + normalize
+  - Read `semanticSegments` and flatten into normalized records.
+  - Normalize timestamps to UTC epoch for fast matching.
+  - Parse coordinate strings into `(lat, lon)` floats.
+- Step 2: Build matchable timeline index
+  - `timelinePath` points become precise time-location samples.
+  - `visit` segments provide stationary place candidates (`placeId`, semantic type, probability).
+  - `activity` segments provide start/end movement anchors when path points are sparse.
+- Step 3: Match photos
+  - Use `DateTimeOriginal` (or `CreateDate` fallback) from EXIF.
+  - Find nearest point within configurable tolerance window (for example ±5 to ±15 minutes).
+  - Assign confidence tiers:
+    - high: direct nearby `timelinePath` hit
+    - medium: inside `visit` interval
+    - low: interpolated from activity start/end only
+- Step 4: UI usage
+  - Show suggested location as non-destructive helper text/action.
+  - Allow one-click apply to batch `Location` field, then manual edit.
+
+### Pre-processing and DB recommendation
+
+- V1 recommendation: no DB yet.
+  - Preprocess `Timeline.json` once into a compact cached normalized file (for example JSONL) keyed by source file mtime/hash.
+  - Load/cache this index at app start or first use; reuse for the session.
+- When to add SQLite:
+  - multiple timeline files/users, incremental updates, very large histories, or advanced querying (spatial/time filters, reverse geocode cache).
+  - Suggested schema if needed later:
+    - `timeline_points(ts_utc, lat, lon, source_type, segment_id, confidence, place_id, semantic_type)`
+    - index on `ts_utc`; optional index on `(lat, lon)` or geohash.
 
 ## Stretch goal - integration with Photolab 9.0 locally
 

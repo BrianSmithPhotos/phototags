@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ from PySide6.QtCore import QThreadPool
 from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
-from phototags.services.ai_suggestion_service import AiSuggestionResult, AiSuggestionService
+from phototags.services.ai_suggestion_service import OLLAMA_DEFAULT_MODEL, AiSuggestionService
 from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
 from phototags.services.exif_service import ExifService, ExifUiData
 from phototags.services.metadata_write_service import MetadataWriteResult, MetadataWriteService
@@ -22,7 +23,7 @@ from phototags.ui.widgets.source_panel import SourcePanel
 from phototags.workers.capture_group_loader import CaptureGroupLoadSignals, CaptureGroupLoadTask
 from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
-from phototags.workers.ai_suggester import AiSuggestSignals, AiSuggestTask
+from phototags.workers.ai_suggester import AiSuggestPayload, AiSuggestSignals, AiSuggestTask
 from phototags.workers.metadata_writer import MetadataSaveSignals, MetadataSaveTask
 from phototags.workers.process_mover import ProcessMoveSignals, ProcessMoveTask
 
@@ -30,6 +31,14 @@ PREVIEW_MAX_EDGE = 2800
 THUMBNAIL_WORKERS = 4
 DESTINATION_ROOT = Path("/Users/bsmi067/Pictures/DxO")
 GROUP_DEBUG_ENABLED = os.getenv("PHOTOTAGS_GROUP_DEBUG", "").strip().casefold() in {"1", "true", "yes"}
+
+
+@dataclass(slots=True)
+class MetadataDraft:
+    """In-memory editable metadata draft for one source image."""
+
+    description: str
+    keywords: str
 
 
 class MainWindow(QMainWindow):
@@ -84,6 +93,8 @@ class MainWindow(QMainWindow):
         self._process_inflight = False
         self._selected_image_path: Path | None = None
         self._current_exif_ui_data: ExifUiData | None = None
+        self._metadata_drafts: dict[Path, MetadataDraft] = {}
+        self._suppress_metadata_sync = False
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
         self.setMinimumSize(1180, 720)
@@ -113,10 +124,10 @@ class MainWindow(QMainWindow):
         self.metadata_panel.save_button.clicked.connect(self._on_save_metadata_clicked)
         self.metadata_panel.process_button.clicked.connect(self._on_process_clicked)
         self.metadata_panel.suggest_button.clicked.connect(self._on_ai_suggest_clicked)
-        self.metadata_panel.apply_suggested_keywords_button.clicked.connect(
-            self._on_apply_suggested_keywords_clicked
-        )
         self.metadata_panel.location_edit.textChanged.connect(self._update_rename_preview)
+        self.metadata_panel.description_edit.textChanged.connect(self._on_metadata_edited)
+        self.metadata_panel.keywords_edit.textChanged.connect(self._on_metadata_edited)
+        self.metadata_panel.set_ai_model_name(OLLAMA_DEFAULT_MODEL)
         self.preview_panel.delete_button.clicked.connect(self._on_skip_selected)
         self._skip_shortcut = QShortcut(QKeySequence("Meta+Backspace"), self)
         self._skip_shortcut.activated.connect(self._on_skip_selected)
@@ -135,6 +146,7 @@ class MainWindow(QMainWindow):
 
     def _on_photo_selected(self, image_path: Path | None) -> None:
         """Start background preview loading for selected photo."""
+        self._sync_current_draft()
         self._selected_image_path = image_path
         if image_path is None:
             self._current_exif_ui_data = None
@@ -168,12 +180,7 @@ class MainWindow(QMainWindow):
 
         self._start_exif_load(image_path=image_path)
         self.metadata_panel.clear_ai_suggestions()
-        self.metadata_panel.set_save_button_enabled(not self._process_inflight and not self._ai_inflight)
-        self.metadata_panel.set_process_button_enabled(
-            not self._process_inflight and not self._ai_inflight
-        )
-        self.metadata_panel.set_suggest_button_enabled(not self._process_inflight and not self._ai_inflight)
-        self.preview_panel.delete_button.setEnabled(not self._process_inflight and not self._ai_inflight)
+        self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status("")
         self._update_rename_preview()
 
@@ -278,7 +285,7 @@ class MainWindow(QMainWindow):
         self,
         request_id: int,
         job_id: int,
-        _image_path: str,
+        image_path: str,
         ui_data: ExifUiData,
         dump_text: str,
     ) -> None:
@@ -286,21 +293,40 @@ class MainWindow(QMainWindow):
         self._finish_exif_job(job_id)
         if request_id != self._exif_request_id:
             return
-        self.metadata_panel.set_metadata_fields(
-            title=ui_data.title,
-            description=ui_data.description,
-            keywords=ui_data.keywords,
-            camera=ui_data.camera,
-            lens_type=ui_data.lens_type,
-            aperture=ui_data.aperture,
-            shutter_speed=ui_data.shutter_speed,
-            focal_length=ui_data.focal_length,
-            focus_distance=ui_data.focus_distance,
-            captured_at=ui_data.captured_at_display,
-            iso=ui_data.iso,
+        path_obj = Path(image_path)
+        draft = self._metadata_drafts.get(path_obj)
+        default_keywords = self._keywords_with_art_filter(
+            ui_data.keywords,
+            ui_data.art_filter_token,
         )
+        description_text = draft.description if draft is not None else ui_data.description
+        keywords_text = draft.keywords if draft is not None else default_keywords
+
+        self._suppress_metadata_sync = True
+        try:
+            self.metadata_panel.set_metadata_fields(
+                title=ui_data.title,
+                description=description_text,
+                keywords=keywords_text,
+                camera=ui_data.camera,
+                lens_type=ui_data.lens_type,
+                aperture=ui_data.aperture,
+                shutter_speed=ui_data.shutter_speed,
+                focal_length=ui_data.focal_length,
+                focus_distance=ui_data.focus_distance,
+                captured_at=ui_data.captured_at_display,
+                iso=ui_data.iso,
+            )
+        finally:
+            self._suppress_metadata_sync = False
         self._current_exif_ui_data = ui_data
         self.metadata_panel.set_exif_dump(dump_text)
+        if draft is None:
+            self._metadata_drafts[path_obj] = MetadataDraft(
+                description=description_text,
+                keywords=keywords_text,
+            )
+        self._restore_metadata_action_controls()
         self._update_rename_preview()
 
     def _on_groups_loaded(
@@ -377,6 +403,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_save_status("AI suggestions running...", is_error=True)
             return
 
+        self._sync_current_draft()
         image_path = self._selected_image_path
         description = self.metadata_panel.description_text()
         keywords_text = self.metadata_panel.keywords_text()
@@ -415,11 +442,20 @@ class MainWindow(QMainWindow):
         if request_id != self._metadata_write_request_id:
             return
 
-        self.metadata_panel.keywords_edit.setPlainText(", ".join(result.keywords))
-        self.metadata_panel.description_edit.setPlainText(result.description)
-        self.metadata_panel.set_save_button_enabled(not self._process_inflight and not self._ai_inflight)
+        self._suppress_metadata_sync = True
+        try:
+            self.metadata_panel.keywords_edit.setPlainText(", ".join(result.keywords))
+            self.metadata_panel.description_edit.setPlainText(result.description)
+        finally:
+            self._suppress_metadata_sync = False
+        image_path_obj = Path(image_path)
+        self._metadata_drafts[image_path_obj] = MetadataDraft(
+            description=result.description,
+            keywords=", ".join(result.keywords),
+        )
+        self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status("Saved description + keywords")
-        self._start_exif_load(Path(image_path))
+        self._start_exif_load(image_path_obj)
 
     def _on_metadata_save_failed(
         self,
@@ -432,7 +468,7 @@ class MainWindow(QMainWindow):
         self._finish_metadata_write_job(job_id)
         if request_id != self._metadata_write_request_id:
             return
-        self.metadata_panel.set_save_button_enabled(not self._process_inflight and not self._ai_inflight)
+        self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status(f"Save failed: {error}", is_error=True)
 
     def _on_ai_suggest_clicked(self) -> None:
@@ -447,7 +483,24 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_ai_status("AI suggestions already running...", is_error=True)
             return
 
-        image_path = self._selected_image_path
+        self._sync_current_draft()
+        selected_path = self._selected_image_path
+        if selected_path is None:
+            self.metadata_panel.set_ai_status("No file selected", is_error=True)
+            return
+        representative_path, target_paths = self._ai_targets_for(selected_path)
+        model_name = self.metadata_panel.ai_model_name() or OLLAMA_DEFAULT_MODEL
+        self.metadata_panel.set_ai_model_name(model_name)
+
+        existing_keywords_by_path: dict[str, str] = {}
+        for path in target_paths:
+            draft = self._metadata_drafts.get(path)
+            if draft is not None:
+                existing_keywords_by_path[str(path)] = draft.keywords
+                continue
+            if path == selected_path:
+                existing_keywords_by_path[str(path)] = self.metadata_panel.keywords_text()
+
         self._ai_request_id += 1
         request_id = self._ai_request_id
         self._ai_job_id += 1
@@ -455,22 +508,30 @@ class MainWindow(QMainWindow):
 
         self._ai_inflight = True
         self.metadata_panel.set_suggest_button_enabled(False)
-        self.metadata_panel.set_apply_suggested_keywords_enabled(False)
         self.metadata_panel.set_save_button_enabled(False)
         self.metadata_panel.set_process_button_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
-        self.metadata_panel.set_ai_status("Generating AI suggestions...")
+        if len(target_paths) > 1:
+            self.metadata_panel.set_ai_status(
+                f"Generating AI suggestions for {len(target_paths)}-image set..."
+            )
+        else:
+            self.metadata_panel.set_ai_status("Generating AI suggestions...")
 
         signals = AiSuggestSignals()
         signals.suggested.connect(partial(self._on_ai_suggested, request_id, job_id))
         signals.failed.connect(partial(self._on_ai_suggest_failed, request_id, job_id))
 
         task = AiSuggestTask(
-            image_path=image_path,
+            representative_path=representative_path,
+            target_paths=target_paths,
+            model_name=model_name,
+            existing_keywords_by_path=existing_keywords_by_path,
             existing_keywords_text=self.metadata_panel.keywords_text(),
             existing_description=self.metadata_panel.description_text(),
             capture_context=self._capture_context(),
-            service=self._ai_suggestion_service,
+            ai_service=self._ai_suggestion_service,
+            exif_service=self._exif_service,
             signals=signals,
         )
         self._active_ai_jobs[job_id] = (task, signals)
@@ -480,36 +541,55 @@ class MainWindow(QMainWindow):
         self,
         request_id: int,
         job_id: int,
-        image_path: str,
-        result: AiSuggestionResult,
+        payload: AiSuggestPayload,
     ) -> None:
-        """Apply AI suggestions to UI fields."""
+        """Apply AI suggestions to all target files as editable drafts."""
         self._finish_ai_job(job_id)
         if request_id != self._ai_request_id:
             return
 
         self._ai_inflight = False
-        if self._selected_image_path is None or str(self._selected_image_path) != image_path:
-            has_selection = self._selected_image_path is not None
-            self.metadata_panel.set_suggest_button_enabled(has_selection and not self._process_inflight)
-            self.metadata_panel.set_apply_suggested_keywords_enabled(
-                has_selection
-                and not self._process_inflight
-                and bool(self.metadata_panel.suggested_keywords_text().strip())
+        for path_text in payload.target_paths:
+            path_obj = Path(path_text)
+            base_keywords = payload.base_keywords_by_path.get(path_text, "")
+            art_filter = payload.art_filter_by_path.get(path_text, "")
+            with_art_filter = self._keywords_with_art_filter(base_keywords, art_filter)
+            merged_keywords = self._merge_keywords(
+                self._parse_keywords(with_art_filter),
+                payload.suggestion.keywords,
             )
-            self.metadata_panel.set_save_button_enabled(has_selection and not self._process_inflight)
-            self.metadata_panel.set_process_button_enabled(has_selection and not self._process_inflight)
-            self.preview_panel.delete_button.setEnabled(has_selection and not self._process_inflight)
-            return
+            self._metadata_drafts[path_obj] = MetadataDraft(
+                description=payload.suggestion.description,
+                keywords=", ".join(merged_keywords),
+            )
 
-        self.metadata_panel.description_edit.setPlainText(result.description)
-        self.metadata_panel.set_suggested_keywords(", ".join(result.keywords))
-        self.metadata_panel.set_apply_suggested_keywords_enabled(bool(result.keywords))
-        self.metadata_panel.set_suggest_button_enabled(True)
-        self.metadata_panel.set_save_button_enabled(True)
-        self.metadata_panel.set_process_button_enabled(True)
-        self.preview_panel.delete_button.setEnabled(True)
-        self.metadata_panel.set_ai_status("AI suggestions ready")
+        selected_path = self._selected_image_path
+        if selected_path is not None:
+            selected_draft = self._metadata_drafts.get(selected_path)
+            if selected_draft is not None:
+                self._suppress_metadata_sync = True
+                try:
+                    self.metadata_panel.description_edit.setPlainText(selected_draft.description)
+                    self.metadata_panel.keywords_edit.setPlainText(selected_draft.keywords)
+                finally:
+                    self._suppress_metadata_sync = False
+
+        self._restore_metadata_action_controls()
+        applied_count = len(payload.target_paths)
+        refinement_note = ""
+        if payload.suggestion.refinement_applied:
+            refinement_note = "crop-refinement applied"
+        elif payload.suggestion.refinement_attempted:
+            refinement_note = "crop-refinement attempted"
+        status_suffix = f"; {refinement_note}" if refinement_note else ""
+        if applied_count > 1:
+            self.metadata_panel.set_ai_status(
+                f"AI suggestions applied to {applied_count} images; keywords auto-appended{status_suffix}"
+            )
+            return
+        self.metadata_panel.set_ai_status(
+            f"AI suggestions ready; keywords auto-appended{status_suffix}"
+        )
 
     def _on_ai_suggest_failed(
         self,
@@ -524,28 +604,48 @@ class MainWindow(QMainWindow):
             return
 
         self._ai_inflight = False
-        has_selection = self._selected_image_path is not None
-        self.metadata_panel.set_suggest_button_enabled(has_selection and not self._process_inflight)
-        self.metadata_panel.set_apply_suggested_keywords_enabled(
-            has_selection
-            and not self._process_inflight
-            and bool(self.metadata_panel.suggested_keywords_text().strip())
-        )
-        self.metadata_panel.set_save_button_enabled(has_selection and not self._process_inflight)
-        self.metadata_panel.set_process_button_enabled(has_selection and not self._process_inflight)
-        self.preview_panel.delete_button.setEnabled(has_selection and not self._process_inflight)
+        self._restore_metadata_action_controls()
         self.metadata_panel.set_ai_status(f"AI suggestion failed: {error}", is_error=True)
 
-    def _on_apply_suggested_keywords_clicked(self) -> None:
-        """Merge suggested keywords into editable keywords field."""
-        suggested = self._parse_keywords(self.metadata_panel.suggested_keywords_text())
-        if not suggested:
-            self.metadata_panel.set_ai_status("No suggested keywords to add", is_error=True)
+    def _on_metadata_edited(self) -> None:
+        """Persist current editors into in-memory draft for selected image."""
+        self._sync_current_draft()
+
+    def _sync_current_draft(self) -> None:
+        """Capture editable fields for current selection into draft cache."""
+        if self._suppress_metadata_sync:
             return
-        existing = self._parse_keywords(self.metadata_panel.keywords_text())
-        merged = self._merge_keywords(existing, suggested)
-        self.metadata_panel.keywords_edit.setPlainText(", ".join(merged))
-        self.metadata_panel.set_ai_status("Suggested keywords added to Keywords")
+        if self._selected_image_path is None:
+            return
+        self._metadata_drafts[self._selected_image_path] = MetadataDraft(
+            description=self.metadata_panel.description_text(),
+            keywords=self.metadata_panel.keywords_text(),
+        )
+
+    def _ai_targets_for(self, selected_path: Path) -> tuple[Path, tuple[Path, ...]]:
+        """Return representative and member list for AI apply scope."""
+        group = self._group_by_path.get(selected_path)
+        if group is None:
+            return selected_path, (selected_path,)
+        return group.representative_path, tuple(group.members)
+
+    def _keywords_with_art_filter(self, keywords_text: str, art_filter_token: str) -> str:
+        """Append art filter token (when present) to comma-delimited keywords."""
+        keywords = self._parse_keywords(keywords_text)
+        art_filter = art_filter_token.strip()
+        if not art_filter:
+            return ", ".join(keywords)
+        merged = self._merge_keywords(keywords, [art_filter])
+        return ", ".join(merged)
+
+    def _restore_metadata_action_controls(self) -> None:
+        """Restore right-panel action enabled states based on app state."""
+        has_selection = self._selected_image_path is not None
+        allow_actions = has_selection and not self._process_inflight and not self._ai_inflight
+        self.metadata_panel.set_suggest_button_enabled(allow_actions)
+        self.metadata_panel.set_save_button_enabled(allow_actions)
+        self.metadata_panel.set_process_button_enabled(allow_actions)
+        self.preview_panel.delete_button.setEnabled(allow_actions)
 
     def _capture_context(self) -> str:
         """Return short camera/exposure context string for AI prompting."""
@@ -593,6 +693,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_save_status("AI suggestions running...", is_error=True)
             return
 
+        self._sync_current_draft()
         proposed_filename = self.metadata_panel.rename_preview_text()
         if not proposed_filename:
             self.metadata_panel.set_save_status("No filename preview available", is_error=True)
@@ -613,7 +714,6 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_button_enabled(False)
         self.metadata_panel.set_process_button_enabled(False)
         self.metadata_panel.set_suggest_button_enabled(False)
-        self.metadata_panel.set_apply_suggested_keywords_enabled(False)
         self.preview_panel.delete_button.setEnabled(False)
         self.metadata_panel.set_save_status("Processing and copying file...")
 
@@ -648,9 +748,18 @@ class MainWindow(QMainWindow):
             return
 
         self._process_inflight = False
-        self.metadata_panel.title_edit.setPlainText(result.metadata_result.title)
-        self.metadata_panel.description_edit.setPlainText(result.metadata_result.description)
-        self.metadata_panel.keywords_edit.setPlainText(", ".join(result.metadata_result.keywords))
+        self._suppress_metadata_sync = True
+        try:
+            self.metadata_panel.title_edit.setPlainText(result.metadata_result.title)
+            self.metadata_panel.description_edit.setPlainText(result.metadata_result.description)
+            self.metadata_panel.keywords_edit.setPlainText(", ".join(result.metadata_result.keywords))
+        finally:
+            self._suppress_metadata_sync = False
+        source_path_obj = Path(source_path)
+        self._metadata_drafts[source_path_obj] = MetadataDraft(
+            description=result.metadata_result.description,
+            keywords=", ".join(result.metadata_result.keywords),
+        )
         self.source_panel.mark_skipped(Path(source_path))
         self.metadata_panel.set_save_status(f"Copied to {result.destination_path}")
 
@@ -666,14 +775,7 @@ class MainWindow(QMainWindow):
         if request_id != self._process_request_id:
             return
         self._process_inflight = False
-        has_selection = self._selected_image_path is not None
-        self.metadata_panel.set_save_button_enabled(has_selection)
-        self.metadata_panel.set_process_button_enabled(has_selection)
-        self.metadata_panel.set_suggest_button_enabled(has_selection)
-        self.metadata_panel.set_apply_suggested_keywords_enabled(
-            has_selection and bool(self.metadata_panel.suggested_keywords_text().strip())
-        )
-        self.preview_panel.delete_button.setEnabled(has_selection)
+        self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status(f"Process failed: {error}", is_error=True)
 
     def _on_skip_selected(self) -> None:

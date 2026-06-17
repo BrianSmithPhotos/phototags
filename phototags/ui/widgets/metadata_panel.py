@@ -71,21 +71,13 @@ class MetadataPanel(QWidget):
         ai_heading.setObjectName("subHeading")
         layout.addWidget(ai_heading)
 
+        self.ai_model_edit = QLineEdit()
+        self.ai_model_edit.setPlaceholderText("Model (e.g. gemma4:26b-mlx)")
+        layout.addWidget(self.ai_model_edit)
+
         self.suggest_button = QPushButton("Suggest Description + Keywords")
         self.suggest_button.setEnabled(False)
         layout.addWidget(self.suggest_button)
-
-        self.suggested_keywords_view = QTextEdit()
-        self.suggested_keywords_view.setReadOnly(True)
-        self.suggested_keywords_view.setMinimumHeight(62)
-        self.suggested_keywords_view.setPlaceholderText(
-            "AI-suggested keywords appear here. Review and add to Keywords when ready."
-        )
-        layout.addWidget(self.suggested_keywords_view)
-
-        self.apply_suggested_keywords_button = QPushButton("Add Suggested -> Keywords")
-        self.apply_suggested_keywords_button.setEnabled(False)
-        layout.addWidget(self.apply_suggested_keywords_button)
 
         self.ai_status = QLabel("")
         self.ai_status.setObjectName("statusLabel")
@@ -369,9 +361,13 @@ class MetadataPanel(QWidget):
         """Enable/disable AI suggestion action."""
         self.suggest_button.setEnabled(enabled)
 
-    def set_apply_suggested_keywords_enabled(self, enabled: bool) -> None:
-        """Enable/disable apply-suggested-keywords action."""
-        self.apply_suggested_keywords_button.setEnabled(enabled)
+    def ai_model_name(self) -> str:
+        """Return current Ollama model name from AI settings."""
+        return self.ai_model_edit.text().strip()
+
+    def set_ai_model_name(self, model_name: str) -> None:
+        """Set Ollama model name in AI settings input."""
+        self.ai_model_edit.setText(model_name.strip())
 
     def set_save_status(self, message: str, is_error: bool = False) -> None:
         """Set status line under metadata save actions."""
@@ -393,18 +389,8 @@ class MetadataPanel(QWidget):
         """Return generated filename preview text."""
         return self.rename_preview.text().strip()
 
-    def set_suggested_keywords(self, text: str) -> None:
-        """Set AI suggested keywords text."""
-        self.suggested_keywords_view.setPlainText(text)
-
-    def suggested_keywords_text(self) -> str:
-        """Return current suggested keywords text."""
-        return self.suggested_keywords_view.toPlainText()
-
     def clear_ai_suggestions(self) -> None:
         """Clear AI suggestion output."""
-        self.suggested_keywords_view.setPlainText("")
-        self.set_apply_suggested_keywords_enabled(False)
         self.set_ai_status("")
 
     def set_rename_preview(self, filename: str) -> None:
