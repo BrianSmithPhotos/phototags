@@ -48,6 +48,7 @@ class AiSuggestTask(QRunnable):
         existing_keywords_text: str,
         existing_description: str,
         capture_context: str,
+        location_context: str,
         ai_service: AiSuggestionService,
         exif_service: ExifService,
         signals: AiSuggestSignals,
@@ -60,6 +61,7 @@ class AiSuggestTask(QRunnable):
         self.existing_keywords_text = existing_keywords_text
         self.existing_description = existing_description
         self.capture_context = capture_context
+        self.location_context = location_context
         self.ai_service = ai_service
         self.exif_service = exif_service
         self.signals = signals
@@ -73,6 +75,7 @@ class AiSuggestTask(QRunnable):
                 existing_keywords_text=self.existing_keywords_text,
                 existing_description=self.existing_description,
                 capture_context=self.capture_context,
+                location_context=self.location_context,
             )
             base_keywords_by_path: dict[str, str] = {}
             art_filter_by_path: dict[str, str] = {}

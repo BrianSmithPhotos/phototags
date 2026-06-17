@@ -18,6 +18,7 @@ from phototags.services.elevation_lookup_service import ElevationLookupService
 from phototags.services.exif_service import ExifService, ExifUiData
 from phototags.services.metadata_write_service import MetadataWriteService
 from phototags.services.process_move_service import ProcessMoveService
+from phototags.services.reverse_geocode_service import ReverseGeocodeResult, ReverseGeocodeService
 from phototags.services.rename_service import RenameContext, RenameService
 from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
@@ -28,6 +29,7 @@ from phototags.workers.elevation_lookup import ElevationLookupSignals, Elevation
 from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 from phototags.workers.location_suggester import LocationSuggestSignals, LocationSuggestTask
+from phototags.workers.reverse_geocode_lookup import ReverseGeocodeSignals, ReverseGeocodeTask
 from phototags.workers.ai_suggester import AiSuggestPayload, AiSuggestSignals, AiSuggestTask
 from phototags.workers.metadata_writer import (
     MetadataBatchSaveResult,
@@ -63,6 +65,7 @@ class MainWindow(QMainWindow):
         self._elevation_lookup_service = ElevationLookupService()
         self._exif_service = ExifService()
         self._metadata_write_service = MetadataWriteService()
+        self._reverse_geocode_service = ReverseGeocodeService()
         self._rename_service = RenameService()
         self._timeline_location_service = TimelineLocationService()
         self._process_move_service = ProcessMoveService(
@@ -83,6 +86,8 @@ class MainWindow(QMainWindow):
         self._location_pool.setMaxThreadCount(1)
         self._altitude_pool = QThreadPool(self)
         self._altitude_pool.setMaxThreadCount(1)
+        self._geocode_pool = QThreadPool(self)
+        self._geocode_pool.setMaxThreadCount(1)
         self._ai_pool = QThreadPool(self)
         self._ai_pool.setMaxThreadCount(1)
         self._process_pool = QThreadPool(self)
@@ -107,6 +112,9 @@ class MainWindow(QMainWindow):
         self._altitude_request_id = 0
         self._altitude_job_id = 0
         self._active_altitude_jobs: dict[int, tuple[ElevationLookupTask, ElevationLookupSignals]] = {}
+        self._geocode_request_id = 0
+        self._geocode_job_id = 0
+        self._active_geocode_jobs: dict[int, tuple[ReverseGeocodeTask, ReverseGeocodeSignals]] = {}
         self._ai_request_id = 0
         self._ai_job_id = 0
         self._active_ai_jobs: dict[int, tuple[AiSuggestTask, AiSuggestSignals]] = {}
@@ -125,6 +133,8 @@ class MainWindow(QMainWindow):
         self._gps_altitude_unreliable_by_path: dict[Path, bool] = {}
         self._gps_altitude_source_by_path: dict[Path, str] = {}
         self._altitude_target_paths: tuple[Path, ...] = tuple()
+        self._geocode_target_paths: tuple[Path, ...] = tuple()
+        self._location_context_by_path: dict[Path, str] = {}
         self._suppress_metadata_sync = False
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
@@ -691,6 +701,7 @@ class MainWindow(QMainWindow):
             existing_keywords_text=self.metadata_panel.keywords_text(),
             existing_description=self.metadata_panel.description_text(),
             capture_context=self._capture_context(),
+            location_context=self._location_context_for_paths(target_paths),
             ai_service=self._ai_suggestion_service,
             exif_service=self._exif_service,
             signals=signals,
@@ -833,7 +844,7 @@ class MainWindow(QMainWindow):
         skipped_embedded = 0
         skipped_unreadable = 0
         for path in target_paths:
-            if self._path_has_embedded_gps(path):
+            if self._path_has_embedded_gps(path, probe=True):
                 skipped_embedded += 1
                 continue
             draft = self._ensure_draft_for_path(path)
@@ -884,6 +895,13 @@ class MainWindow(QMainWindow):
             status_parts.append(f"{skipped_unreadable} skipped (metadata unreadable)")
         self.metadata_panel.set_gps_status("; ".join(status_parts))
         self._restore_metadata_action_controls()
+        self._start_reverse_geocode(
+            image_path=selected,
+            latitude=suggestion.latitude,
+            longitude=suggestion.longitude,
+            target_paths=target_paths,
+            reason=f"Looking up city/county/state for {len(target_paths)} file(s)...",
+        )
         if timeline_altitude is None and self.metadata_panel.auto_altitude_lookup_enabled():
             self._start_altitude_lookup(
                 image_path=selected,
@@ -924,7 +942,7 @@ class MainWindow(QMainWindow):
         skipped_unreadable = 0
         already_has_altitude = 0
         for path in target_paths:
-            if self._path_has_embedded_altitude(path):
+            if self._path_has_embedded_altitude(path, probe=True):
                 skipped_embedded_altitude += 1
                 continue
             draft = self._ensure_draft_for_path(path)
@@ -954,6 +972,13 @@ class MainWindow(QMainWindow):
                 + ("" if skipped_unreadable == 0 else f" ({skipped_unreadable} metadata unreadable)")
                 + "..."
             ),
+        )
+        self._start_reverse_geocode(
+            image_path=selected,
+            latitude=latitude,
+            longitude=longitude,
+            target_paths=target_paths,
+            reason=f"Looking up city/county/state for {len(target_paths)} file(s)...",
         )
 
     def _start_gps_suggest(self, *, image_path: Path, captured_at: str) -> None:
@@ -1040,7 +1065,7 @@ class MainWindow(QMainWindow):
         skipped_unreadable = 0
         selected_applied = False
         for path in targets:
-            if self._path_has_embedded_altitude(path):
+            if self._path_has_embedded_altitude(path, probe=True):
                 skipped_existing += 1
                 continue
             draft = self._ensure_draft_for_path(path)
@@ -1091,6 +1116,115 @@ class MainWindow(QMainWindow):
             return
         self.metadata_panel.set_gps_status(f"Altitude lookup failed: {error}", is_error=True)
         self._restore_metadata_action_controls()
+
+    def _start_reverse_geocode(
+        self,
+        *,
+        image_path: Path,
+        latitude: float,
+        longitude: float,
+        target_paths: tuple[Path, ...],
+        reason: str,
+    ) -> None:
+        """Start background reverse geocode lookup for one coordinate pair."""
+        if not target_paths:
+            return
+        self._geocode_request_id += 1
+        request_id = self._geocode_request_id
+        self._geocode_job_id += 1
+        job_id = self._geocode_job_id
+
+        self.metadata_panel.set_gps_status(reason)
+        self._geocode_target_paths = target_paths
+
+        signals = ReverseGeocodeSignals()
+        signals.looked_up.connect(partial(self._on_reverse_geocoded, request_id, job_id))
+        signals.failed.connect(partial(self._on_reverse_geocode_failed, request_id, job_id))
+
+        task = ReverseGeocodeTask(
+            image_path=image_path,
+            latitude=latitude,
+            longitude=longitude,
+            service=self._reverse_geocode_service,
+            signals=signals,
+        )
+        self._active_geocode_jobs[job_id] = (task, signals)
+        self._geocode_pool.start(task)
+
+    def _on_reverse_geocoded(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        location: ReverseGeocodeResult,
+    ) -> None:
+        """Apply reverse geocode keywords/context to target drafts."""
+        self._finish_geocode_job(job_id)
+        if request_id != self._geocode_request_id:
+            return
+
+        path_obj = Path(image_path)
+        if path_obj != self._selected_image_path:
+            return
+
+        tokens = location.keyword_tokens()
+        if not tokens:
+            self.metadata_panel.set_gps_status("Reverse geocode returned no location keywords")
+            return
+
+        targets = self._geocode_target_paths or (path_obj,)
+        applied_count = 0
+        skipped_unreadable = 0
+        selected_updated = False
+        for path in targets:
+            draft = self._ensure_draft_for_path(path)
+            if draft is None:
+                skipped_unreadable += 1
+                continue
+            merged_keywords = self._merge_keywords(
+                self._parse_keywords(draft.keywords),
+                tokens,
+            )
+            draft.keywords = ", ".join(merged_keywords)
+            self._location_context_by_path[path] = location.context_text()
+            applied_count += 1
+            if path == path_obj:
+                selected_updated = True
+
+        if selected_updated:
+            selected_draft = self._metadata_drafts.get(path_obj)
+            if selected_draft is not None:
+                self._suppress_metadata_sync = True
+                try:
+                    self.metadata_panel.keywords_edit.setPlainText(selected_draft.keywords)
+                finally:
+                    self._suppress_metadata_sync = False
+                self._sync_current_draft()
+
+        if applied_count == 0:
+            self.metadata_panel.set_gps_status("Reverse geocode completed, but no files were updated")
+            return
+
+        summary = ", ".join(tokens)
+        status_parts = [f"Added location keywords to {applied_count}/{len(targets)} file(s): {summary}"]
+        if skipped_unreadable:
+            status_parts.append(f"{skipped_unreadable} skipped (metadata unreadable)")
+        self.metadata_panel.set_gps_status("; ".join(status_parts))
+
+    def _on_reverse_geocode_failed(
+        self,
+        request_id: int,
+        job_id: int,
+        image_path: str,
+        error: str,
+    ) -> None:
+        """Handle reverse geocode errors without interrupting GPS edits."""
+        self._finish_geocode_job(job_id)
+        if request_id != self._geocode_request_id:
+            return
+        if Path(image_path) != self._selected_image_path:
+            return
+        self.metadata_panel.set_gps_status(f"Reverse geocode failed: {error}", is_error=True)
 
     def _on_gps_suggested(
         self,
@@ -1191,7 +1325,7 @@ class MainWindow(QMainWindow):
             return (selected_path,)
         return tuple(group.members)
 
-    def _path_has_embedded_gps(self, path: Path) -> bool:
+    def _path_has_embedded_gps(self, path: Path, *, probe: bool = False) -> bool:
         """Return True when a file already has EXIF latitude and longitude."""
         if path == self._selected_image_path and self._current_exif_ui_data is not None:
             has_value = bool(
@@ -1202,13 +1336,15 @@ class MainWindow(QMainWindow):
             return has_value
         if path in self._embedded_gps_by_path:
             return self._embedded_gps_by_path[path]
+        if not probe:
+            return False
         draft = self._ensure_draft_for_path(path)
         if draft is None:
             self._embedded_gps_by_path[path] = True
             return True
         return self._embedded_gps_by_path.get(path, False)
 
-    def _path_has_embedded_altitude(self, path: Path) -> bool:
+    def _path_has_embedded_altitude(self, path: Path, *, probe: bool = False) -> bool:
         """Return True when a file already has EXIF altitude."""
         if path == self._selected_image_path and self._current_exif_ui_data is not None:
             has_value = bool(self._current_exif_ui_data.gps_altitude.strip())
@@ -1216,6 +1352,8 @@ class MainWindow(QMainWindow):
             return has_value
         if path in self._embedded_altitude_by_path:
             return self._embedded_altitude_by_path[path]
+        if not probe:
+            return False
         draft = self._ensure_draft_for_path(path)
         if draft is None:
             self._embedded_altitude_by_path[path] = True
@@ -1259,6 +1397,21 @@ class MainWindow(QMainWindow):
         self._metadata_drafts[path] = draft
         return draft
 
+    def _location_context_for_paths(self, target_paths: tuple[Path, ...]) -> str:
+        """Return merged reverse-geocode context text for AI prompting."""
+        contexts: list[str] = []
+        seen: set[str] = set()
+        for path in target_paths:
+            context = self._location_context_by_path.get(path, "").strip()
+            if not context:
+                continue
+            key = context.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            contexts.append(context)
+        return " | ".join(contexts)
+
     def _keywords_with_auto_tokens(
         self,
         keywords_text: str,
@@ -1294,7 +1447,7 @@ class MainWindow(QMainWindow):
         lat_value, lon_value = self._current_gps_lat_lon()
         selected = self._selected_image_path
         lookup_target_paths = self._gps_target_paths(selected) if selected is not None else tuple()
-        has_lookup_target = any(not self._path_has_embedded_altitude(path) for path in lookup_target_paths)
+        has_lookup_target = any(not self._path_has_embedded_altitude(path, probe=False) for path in lookup_target_paths)
         self.metadata_panel.set_lookup_altitude_button_enabled(
             allow_actions
             and lat_value is not None
@@ -1554,6 +1707,7 @@ class MainWindow(QMainWindow):
         self._group_pool.clear()
         self._location_pool.clear()
         self._altitude_pool.clear()
+        self._geocode_pool.clear()
         self._ai_pool.clear()
         self._process_pool.clear()
         self._metadata_write_pool.clear()
@@ -1563,6 +1717,7 @@ class MainWindow(QMainWindow):
         self._group_pool.waitForDone()
         self._location_pool.waitForDone()
         self._altitude_pool.waitForDone()
+        self._geocode_pool.waitForDone()
         self._ai_pool.waitForDone()
         self._process_pool.waitForDone()
         self._metadata_write_pool.waitForDone()
@@ -1594,6 +1749,10 @@ class MainWindow(QMainWindow):
     def _finish_altitude_job(self, job_id: int) -> None:
         """Release references for completed altitude lookup tasks."""
         self._active_altitude_jobs.pop(job_id, None)
+
+    def _finish_geocode_job(self, job_id: int) -> None:
+        """Release references for completed reverse-geocode tasks."""
+        self._active_geocode_jobs.pop(job_id, None)
 
     def _finish_ai_job(self, job_id: int) -> None:
         """Release references for completed AI suggestion tasks."""

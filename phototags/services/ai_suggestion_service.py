@@ -133,6 +133,7 @@ class AiSuggestionService:
         existing_keywords_text: str = "",
         existing_description: str = "",
         capture_context: str = "",
+        location_context: str = "",
     ) -> AiSuggestionResult:
         """Generate description and keyword suggestions for one image."""
         self._ensure_model_supports_vision(model)
@@ -141,6 +142,7 @@ class AiSuggestionService:
             existing_keywords_text=existing_keywords_text,
             existing_description=existing_description,
             capture_context=capture_context,
+            location_context=location_context,
         )
         primary = self._suggest_from_image_bytes(
             model=model,
@@ -163,6 +165,7 @@ class AiSuggestionService:
             existing_keywords_text=existing_keywords_text,
             existing_description=existing_description,
             capture_context=capture_context,
+            location_context=location_context,
         )
         try:
             refined = self._suggest_from_base64_payloads(
@@ -189,6 +192,7 @@ class AiSuggestionService:
         existing_keywords_text: str,
         existing_description: str,
         capture_context: str,
+        location_context: str,
     ) -> str:
         """Build deterministic prompt for description and keyword suggestions."""
         return (
@@ -211,9 +215,14 @@ class AiSuggestionService:
             "instead of monochrome.\n"
             "9) Output only JSON in this exact shape:\n"
             '{"description":"...","keywords":["k1","k2"]}\n'
+            "10) If location context is provided, use it to improve likely wildlife/plant "
+            "identification and habitat plausibility.\n"
+            "11) If location context strongly helps, you may include city/county/state in "
+            "the description while keeping it concise.\n"
             f"Existing keywords (optional context): {existing_keywords_text or '(none)'}\n"
             f"Existing description (optional context): {existing_description or '(none)'}\n"
             f"Capture context (optional): {capture_context or '(none)'}\n"
+            f"Location context (optional): {location_context or '(none)'}\n"
         )
 
     def _build_crop_refinement_prompt(
@@ -223,6 +232,7 @@ class AiSuggestionService:
         existing_keywords_text: str,
         existing_description: str,
         capture_context: str,
+        location_context: str,
     ) -> str:
         """Build fallback prompt for crop-focused subject refinement."""
         return (
@@ -235,13 +245,15 @@ class AiSuggestionService:
             "3) If uncertain, use 'likely <species>' language instead of a generic label.\n"
             "4) keywords: 10 to 15 short keywords, lowercase strings, include scientific names "
             "where possible.\n"
-            "5) Output only JSON in this exact shape:\n"
+            "5) Use location context to prefer locally plausible species when provided.\n"
+            "6) Output only JSON in this exact shape:\n"
             '{"description":"...","keywords":["k1","k2"]}\n'
             f"Prior description: {primary_result.description}\n"
             f"Prior keywords: {', '.join(primary_result.keywords)}\n"
             f"Existing keywords (optional context): {existing_keywords_text or '(none)'}\n"
             f"Existing description (optional context): {existing_description or '(none)'}\n"
             f"Capture context (optional): {capture_context or '(none)'}\n"
+            f"Location context (optional): {location_context or '(none)'}\n"
         )
 
     def _suggest_from_image_bytes(
