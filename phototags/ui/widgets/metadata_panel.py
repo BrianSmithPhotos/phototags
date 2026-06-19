@@ -76,7 +76,9 @@ class MetadataPanel(QWidget):
         layout.addWidget(ai_heading)
 
         self.ai_model_edit = QLineEdit()
-        self.ai_model_edit.setPlaceholderText("Model (e.g. gemma4:26b-mlx)")
+        self.ai_model_edit.setPlaceholderText(
+            "Model (e.g. gemma4:26b-mlx, or openrouter:google/gemini-2.5-flash)"
+        )
         layout.addWidget(self.ai_model_edit)
 
         self.suggest_button = QPushButton("Suggest Description + Keywords")

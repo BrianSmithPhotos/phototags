@@ -47,6 +47,12 @@ def _default_provider() -> AiProvider:
         return OpenRouterProvider()
     return OllamaProvider()
 
+
+_PROVIDER_FACTORIES_BY_PREFIX: dict[str, type[AiProvider]] = {
+    "ollama": OllamaProvider,
+    "openrouter": OpenRouterProvider,
+}
+
 SYSTEM_PROMPT = (
     "You are a photography metadata assistant. "
     "Return only strict JSON with keys description and keywords."
@@ -155,6 +161,25 @@ class AiSuggestionService:
 
     def __init__(self, provider: AiProvider | None = None) -> None:
         self._provider = provider or _default_provider()
+        self._providers_by_prefix: dict[str, AiProvider] = {}
+
+    def _resolve_provider_and_model(self, model: str) -> tuple[AiProvider, str]:
+        """Resolve an explicit "ollama:"/"openrouter:" model prefix to its provider.
+
+        The model field is one free-text input, so a prefix is the only way to pick
+        a provider per request without a UI dropdown. Without a recognized prefix,
+        falls back to the provider selected by PHOTOTAGS_AI_PROVIDER at startup.
+        """
+        prefix, separator, rest = model.partition(":")
+        normalized_prefix = prefix.strip().casefold()
+        if not separator or normalized_prefix not in _PROVIDER_FACTORIES_BY_PREFIX or not rest.strip():
+            return self._provider, model.strip()
+
+        provider = self._providers_by_prefix.get(normalized_prefix)
+        if provider is None:
+            provider = _PROVIDER_FACTORIES_BY_PREFIX[normalized_prefix]()
+            self._providers_by_prefix[normalized_prefix] = provider
+        return provider, rest.strip()
 
     def suggest_for_image(
         self,
@@ -167,7 +192,8 @@ class AiSuggestionService:
         location_context: str = "",
     ) -> AiSuggestionResult:
         """Generate description and keyword suggestions for one image."""
-        self._provider.ensure_vision_capable(model)
+        provider, model = self._resolve_provider_and_model(model)
+        provider.ensure_vision_capable(model)
         source_image_bytes = self._read_previewable_image_bytes(image_path)
         prompt = self._build_primary_prompt(
             existing_keywords_text=existing_keywords_text,
@@ -180,6 +206,7 @@ class AiSuggestionService:
         request_label_prefix = image_path.name
         try:
             primary = self._suggest_from_image_bytes(
+                provider=provider,
                 model=model,
                 prompt=prompt,
                 image_bytes=source_image_bytes,
@@ -207,6 +234,7 @@ class AiSuggestionService:
             )
             try:
                 primary = self._suggest_from_base64_payloads(
+                    provider=provider,
                     model=model,
                     prompt=prompt,
                     image_payloads=[center_crop_payload],
@@ -248,6 +276,7 @@ class AiSuggestionService:
         )
         try:
             refined = self._suggest_from_base64_payloads(
+                provider=provider,
                 model=model,
                 prompt=refinement_prompt,
                 image_payloads=crop_payloads,
@@ -343,6 +372,7 @@ class AiSuggestionService:
     def _suggest_from_image_bytes(
         self,
         *,
+        provider: AiProvider,
         model: str,
         prompt: str,
         image_bytes: bytes,
@@ -351,6 +381,7 @@ class AiSuggestionService:
         """Run one suggestion request from raw image bytes."""
         image_payload = self._to_image_base64(image_bytes=image_bytes)
         return self._suggest_from_base64_payloads(
+            provider=provider,
             model=model,
             prompt=prompt,
             image_payloads=[image_payload],
@@ -360,6 +391,7 @@ class AiSuggestionService:
     def _suggest_from_base64_payloads(
         self,
         *,
+        provider: AiProvider,
         model: str,
         prompt: str,
         image_payloads: list[str],
@@ -367,7 +399,7 @@ class AiSuggestionService:
         think: bool = True,
     ) -> AiSuggestionResult:
         """Run one suggestion request from prepared base64 image payloads."""
-        content = self._provider.chat(
+        content = provider.chat(
             model=model,
             system_prompt=SYSTEM_PROMPT,
             user_prompt=prompt,

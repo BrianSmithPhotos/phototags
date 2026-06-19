@@ -248,6 +248,12 @@ Use this when importing a new full-history timeline export.
   stronger species/landmark identification, set the model field (or
   `PHOTOTAGS_OPENROUTER_MODEL`) to `anthropic/claude-sonnet-4.6` or
   `google/gemini-3.1-pro-preview`.
+- [x] Per-request provider override via model-field prefix: typing
+  `openrouter:<model>` or `ollama:<model>` in the existing model text field routes
+  that one request to the named provider regardless of `PHOTOTAGS_AI_PROVIDER`,
+  stripping the prefix before it reaches the provider. No prefix falls back to the
+  env-var-selected default provider. Provider instances are created lazily per
+  prefix and reused (`AiSuggestionService._resolve_provider_and_model`).
 - [ ] Build a standalone eval harness script (not part of the app) that runs a set
   of sample images + expected-keyword answers through the `AiProvider` interface
   to compare models/providers (keyword-overlap scoring, not LLM-graded).
