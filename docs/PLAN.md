@@ -82,7 +82,10 @@ Implementation note:
 - [x] Grouping service in place.
 - [x] Current grouping strategy: capture timestamp at second precision (`DateTimeOriginal` with `CreateDate` fallback).
 - [x] Deterministic representative selection:
-  - largest JPG/JPEG preferred; else largest file.
+  - first JPG/JPEG by filename (capture order) preferred; else first file. Switched
+    from "largest file" after observing OM System Art Filter Bracket bursts pick a
+    heavily-processed (e.g. monochrome/grainy) render as representative, since those
+    often compress larger than the plain render of the same shot.
 - [x] Variant strip in preview panel and selection sync with source panel.
 - [x] Group size indicator in source thumbnails.
 

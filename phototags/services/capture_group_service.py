@@ -185,11 +185,17 @@ class CaptureGroupService:
         return finalized
 
     def _pick_representative(self, paths: list[Path]) -> Path:
-        """Pick representative file for one capture group."""
+        """Pick representative file for one capture group: first JPG by filename, else first file.
+
+        Filename order matches camera capture order (e.g. OM System Art Filter
+        Bracket shoots the plain/Off-filter render first), which gives a more
+        representative preview than picking by file size — art-filter renders
+        (grain, dramatic tone, monochrome) often compress to a larger file than
+        the plain render of the same shot.
+        """
         jpg_candidates = [path for path in paths if path.suffix.casefold() in {".jpg", ".jpeg"}]
-        if jpg_candidates:
-            return max(jpg_candidates, key=lambda path: (self._safe_size(path), path.name.casefold()))
-        return max(paths, key=lambda path: (self._safe_size(path), path.name.casefold()))
+        candidates = jpg_candidates or paths
+        return min(candidates, key=lambda path: path.name.casefold())
 
     def _ordered_members(self, paths: list[Path], representative: Path) -> list[Path]:
         """Order group members with representative first, then deterministic fallback order."""
@@ -243,13 +249,6 @@ class CaptureGroupService:
             if text:
                 return text
         return ""
-
-    def _safe_size(self, path: Path) -> int:
-        """Return file size or 0 when unavailable."""
-        try:
-            return path.stat().st_size
-        except OSError:
-            return 0
 
     def _to_text(self, value: Any) -> str:
         """Convert metadata value into text."""
