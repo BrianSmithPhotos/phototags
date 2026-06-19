@@ -33,6 +33,13 @@ This document is the active implementation snapshot + next-step checklist.
   representative is skipped individually, a remaining sibling is promoted rather
   than the whole set disappearing. Toggling re-flows already-loaded tiles only; no
   re-decoding.
+- [x] Source panel width is capped to fit exactly the visible column count (one
+  column when stacked, two when not), computed from tile width + scrollbar extent
+  + panel margins. `QSplitter` gives any extra dragged-in width to the middle
+  preview panel instead of widening the source column past that cap. The cap
+  recomputes on "Stacked?" toggle. Also fixes a flash of the 2-column grid before
+  capture-set grouping resolves, since column count now depends only on the
+  "Stacked?" state, not on whether grouping data has arrived yet.
 
 ### Part 3 - EXIF read and mapping
 
@@ -88,18 +95,29 @@ Implementation note:
     often compress larger than the plain render of the same shot.
 - [x] Variant strip in preview panel and selection sync with source panel.
 - [x] Group size indicator in source thumbnails.
+- [x] Capture grouping reads EXIF in filename-ordered batches (`batch_image_paths`)
+  so early files in a folder stack as soon as their batch resolves, instead of
+  waiting on the whole folder's EXIF reads. The grouping computation itself
+  (`CaptureGroupService.build_groups_from_metadata`) is recomputed over the full
+  accumulated metadata after every batch — not per batch in isolation — so a
+  same-timestamp set is never split just because its files landed in different
+  batches; see the "Grouping quality refinement" fix below for the bug this
+  closed.
 
-### AI metadata suggestions (Ollama)
+### AI metadata suggestions
 
 - [x] Provider abstraction: `AiSuggestionService` (`ai_suggestion_service.py`) holds
-  only prompting, JSON parsing, and crop-refinement logic. All Ollama HTTP/response
-  details live behind an `AiProvider` interface (`ai_provider.py`) in `OllamaProvider`
-  (`ollama_provider.py`), the default provider. Groundwork for an OpenRouter provider
-  and a standalone model-comparison eval harness that calls providers directly
-  without going through Qt.
+  only prompting, JSON parsing, and crop-refinement logic. All HTTP/response
+  details live behind an `AiProvider` interface (`ai_provider.py`), implemented by
+  `OllamaProvider` (`ollama_provider.py`, the default) and `OpenRouterProvider`
+  (`openrouter_provider.py`); see "AI provider expansion" below for provider
+  selection. Still open: a standalone model-comparison eval harness that calls
+  providers directly without going through Qt.
 - [x] Group-aware AI apply (one pass on representative, apply editable drafts to all set members).
 - [x] Local model input field in UI.
-- [x] Vision capability pre-check via Ollama tags API.
+- [x] Vision capability pre-check before any suggestion request: Ollama via
+  `/api/tags` capabilities list, OpenRouter via `/api/v1/models`
+  `architecture.input_modalities` (see AI provider expansion below).
 - [x] Prompt rules for subject specificity + scientific names where possible.
 - [x] Crop-refinement fallback when subject specificity likely missing.
 - [x] AI status reporting for refinement attempted/applied.
