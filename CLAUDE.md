@@ -14,7 +14,9 @@ work and keep it updated as work completes.
 ## Stack & Tooling
 
 - macOS only. Native look and feel, standard Cmd-based shortcuts.
-- Environment/dependency manager: `uv`. Use `uv run` / `uv add`. Do not use plain `pip` or `venv`.
+- Environment/dependency manager: `uv`. Use `uv run` / `uv add`. Favor `uv` for running scripts,
+  tests, and one-off Python commands too (e.g. `uv run python -m py_compile ...`) — fall back to a
+  plain `python3`/activated venv only when `uv` genuinely can't do the job.
 - UI: PySide6 (Qt for Python). Do not introduce PyQt5 or Tkinter.
 - Image handling: Pillow, for thumbnails/preview only.
 - Metadata engine: `exiftool` (external binary, invoked via `subprocess`). All metadata read/write
@@ -32,10 +34,17 @@ work and keep it updated as work completes.
   emit Qt signals back to the UI.
 
 When adding a feature, put the logic in a service, wrap it in a worker if it does I/O or is slow,
-and keep the UI layer to wiring/state only. `main_window.py` and `ai_suggestion_service.py` have
-already grown past a size where this separation is easy to see — when touching either, prefer
-extracting a focused class/module for the piece you're changing rather than adding another method
-to the existing class.
+and keep the UI layer to wiring/state only. `main_window.py` is still the largest file and has
+several distinct responsibilities (capture-group orchestration, AI-apply, GPS/geocode/altitude
+orchestration, save, process/move) wired into one class — when touching it, prefer extracting a
+focused coordinator class for the piece you're changing rather than adding another method to the
+existing class.
+
+AI suggestions follow a provider pattern: `ai_suggestion_service.py` owns prompting, response
+parsing, and crop-refinement logic and is backend-agnostic. The actual backend implements the
+`AiProvider` interface in `ai_provider.py` — `OllamaProvider` (`ollama_provider.py`) is the only
+implementation today. Adding a new backend (e.g. OpenRouter) means writing one new `AiProvider`
+implementation, not touching `ai_suggestion_service.py`.
 
 ## Coding Style
 

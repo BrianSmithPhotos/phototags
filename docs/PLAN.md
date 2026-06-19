@@ -4,25 +4,6 @@ Last updated: 2026-06-18
 
 This document is the active implementation snapshot + next-step checklist.
 
-## 0. Recent Fixes (2026-06-18)
-
-- [x] Fixed GPS write not persisting hemisphere correctly: `exiftool` was writing
-  `GPSLatitude`/`GPSLongitude`/`GPSAltitude` magnitudes but never set
-  `GPSLatitudeRef`/`GPSLongitudeRef`/`GPSAltitudeRef`, so most readers showed no
-  location or the wrong hemisphere for southern/western coordinates. Fixed in
-  `metadata_write_service.py`; verified via direct exiftool round-trip test.
-- [x] Fixed skip (single image / capture set / process-success) triggering a full
-  thumbnail grid rebuild and re-decoding every visible thumbnail. `source_panel.py`
-  now removes just the skipped tile(s) and re-flows the grid instead of reloading
-  the folder.
-- [x] Tightened timeline match window from 60 to 30 minutes based on analysis of
-  the cached timeline data (98%+ of recent consecutive points are within 30
-  minutes of each other).
-- [x] Extracted an `AiProvider` interface (`ai_provider.py`) with `OllamaProvider`
-  as the default implementation (`ollama_provider.py`), so `ai_suggestion_service.py`
-  no longer contains Ollama HTTP/parsing details. Groundwork for OpenRouter support
-  and a standalone model-comparison eval harness.
-
 ## 1. Completed Core Scope
 
 ### Part 1 - App shell and architecture
@@ -38,6 +19,9 @@ This document is the active implementation snapshot + next-step checklist.
 - [x] Background image loading for thumbnails and full preview.
 - [x] ORF preview fallback via `exiftool -b -PreviewImage` when needed.
 - [x] Preview zoom + fit behavior.
+- [x] Skip (single image, capture set, or auto-skip after successful process) removes
+  just the affected tile(s) from the grid in place; it no longer reloads the whole
+  folder or re-decodes thumbnails that are already loaded.
 
 ### Part 3 - EXIF read and mapping
 
@@ -58,7 +42,9 @@ Implementation note:
   - Title -> `IPTC:ObjectName`, `XMP-dc:Title`
   - Description -> `IPTC:Caption-Abstract`, `XMP-dc:Description`
   - Keywords -> `IPTC:Keywords`, `XMP-dc:Subject`
-  - GPS -> `GPSLatitude`, `GPSLongitude`, optional `GPSAltitude`
+  - GPS -> `GPSLatitude`/`GPSLatitudeRef`, `GPSLongitude`/`GPSLongitudeRef`, optional
+    `GPSAltitude`/`GPSAltitudeRef` (Ref tags derived from value sign so southern/western
+    coordinates read back with the correct hemisphere)
 
 ### Part 5 - Rename flow
 
@@ -91,6 +77,12 @@ Implementation note:
 
 ### AI metadata suggestions (Ollama)
 
+- [x] Provider abstraction: `AiSuggestionService` (`ai_suggestion_service.py`) holds
+  only prompting, JSON parsing, and crop-refinement logic. All Ollama HTTP/response
+  details live behind an `AiProvider` interface (`ai_provider.py`) in `OllamaProvider`
+  (`ollama_provider.py`), the default provider. Groundwork for an OpenRouter provider
+  and a standalone model-comparison eval harness that calls providers directly
+  without going through Qt.
 - [x] Group-aware AI apply (one pass on representative, apply editable drafts to all set members).
 - [x] Local model input field in UI.
 - [x] Vision capability pre-check via Ollama tags API.
@@ -220,6 +212,15 @@ Use this when importing a new full-history timeline export.
 - [ ] Compare at least one strong general vision model against one or more biology-focused/specialized candidates.
 - [ ] Define per-subject model recommendations (for example: default general model + optional specialist model for flora/fauna workflows).
 - [ ] Tune prompts for difficult bird/flower species and low-light scenes.
+
+### AI provider expansion
+
+- [ ] Implement an `OpenRouterProvider` (implements `AiProvider` in `ai_provider.py`)
+  as an alternative to `OllamaProvider`; add provider selection (env var or UI
+  dropdown) and an `OPENROUTER_API_KEY` slot in env config.
+- [ ] Build a standalone eval harness script (not part of the app) that runs a set
+  of sample images + expected-keyword answers through the `AiProvider` interface
+  to compare models/providers (keyword-overlap scoring, not LLM-graded).
 
 ### Integration stretch goals
 
