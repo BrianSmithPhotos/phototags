@@ -1,6 +1,6 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
 
 This document is the active implementation snapshot + next-step checklist.
 
@@ -18,10 +18,21 @@ This document is the active implementation snapshot + next-step checklist.
 - [x] Supported file types in UI listing: `.jpg`, `.jpeg`, `.orf`.
 - [x] Background image loading for thumbnails and full preview.
 - [x] ORF preview fallback via `exiftool -b -PreviewImage` when needed.
-- [x] Preview zoom + fit behavior.
+- [x] Preview zoom + fit behavior; zoom keeps the same image-space point centered in
+  the viewport across zoom level changes (no drift toward a corner).
 - [x] Skip (single image, capture set, or auto-skip after successful process) removes
   just the affected tile(s) from the grid in place; it no longer reloads the whole
   folder or re-decodes thumbnails that are already loaded.
+- [x] Source panel directory tree is sized to a small default (no large wasted blank
+  area between the tree and the thumbnail grid); thumbnail grid gets remaining
+  vertical space via splitter stretch factors.
+- [x] "Stacked?" checkbox (default on) in the source panel: when a folder's capture
+  groups are known, shows only one representative tile per capture set in a single
+  column instead of every member in the 2-column grid. The full set remains
+  reachable via the preview panel's existing variant strip. If a visible
+  representative is skipped individually, a remaining sibling is promoted rather
+  than the whole set disappearing. Toggling re-flows already-loaded tiles only; no
+  re-decoding.
 
 ### Part 3 - EXIF read and mapping
 

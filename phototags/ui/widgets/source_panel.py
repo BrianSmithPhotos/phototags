@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QDir, QFileInfo, QThreadPool, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QFileSystemModel,
     QFrame,
@@ -156,6 +157,8 @@ class SourcePanel(QWidget):
         self._thumbnail_pixmaps: dict[Path, QPixmap] = {}
         self._skipped_paths: set[Path] = set()
         self._active_thumb_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
+        self._stacked_enabled = True
+        self._non_representative_paths: set[Path] = set()
         self._build_ui()
         self._set_source_path(source_dir)
 
@@ -208,9 +211,18 @@ class SourcePanel(QWidget):
         path_row.addWidget(browse_button)
         layout.addLayout(path_row)
 
+        count_row = QHBoxLayout()
+        count_row.setSpacing(8)
+
         self.file_count_label = QLabel("0 files")
         self.file_count_label.setObjectName("supportText")
-        layout.addWidget(self.file_count_label)
+        count_row.addWidget(self.file_count_label, 1)
+
+        self.stacked_checkbox = QCheckBox("Stacked?")
+        self.stacked_checkbox.setChecked(True)
+        self.stacked_checkbox.toggled.connect(self._on_stacked_toggled)
+        count_row.addWidget(self.stacked_checkbox)
+        layout.addLayout(count_row)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -238,7 +250,9 @@ class SourcePanel(QWidget):
         self.thumb_grid.setSpacing(8)
         self.thumb_scroll.setWidget(self.thumb_container)
         splitter.addWidget(self.thumb_scroll)
-        splitter.setSizes([300, 420])
+        splitter.setSizes([110, 610])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
 
         self.setStyleSheet(
             f"""
@@ -299,6 +313,7 @@ class SourcePanel(QWidget):
         self._thumb_tiles.clear()
         self._group_sizes = {}
         self._thumbnail_pixmaps = {}
+        self._non_representative_paths = set()
         self._clear_grid()
 
         image_paths = self._find_supported_images(folder_path)
@@ -313,15 +328,13 @@ class SourcePanel(QWidget):
             self.photo_selected.emit(None)
             return
 
-        for index, image_path in enumerate(image_paths):
-            row = index // GRID_COLUMN_COUNT
-            col = index % GRID_COLUMN_COUNT
+        for image_path in image_paths:
             tile = ThumbnailTile(image_path=image_path)
             tile.set_group_size(self._group_sizes.get(image_path, 1))
             tile.clicked.connect(self._on_tile_clicked)
             self._thumb_tiles[str(image_path)] = tile
-            self.thumb_grid.addWidget(tile, row, col)
             self._start_thumbnail_load(image_path=image_path, request_id=request_id)
+        self._relayout_grid()
 
         self._set_selected_path(image_paths[0])
         self.photo_selected.emit(image_paths[0])
@@ -432,6 +445,46 @@ class SourcePanel(QWidget):
         for path_text, tile in self._thumb_tiles.items():
             tile.set_group_size(self._group_sizes.get(Path(path_text), 1))
 
+    def set_capture_group_membership(self, non_representative_paths: set[Path]) -> None:
+        """Record which currently-displayed files are non-representative capture-set members.
+
+        When "Stacked?" is on, these are hidden from the grid so only one tile per
+        capture set is shown; the full set remains reachable via the preview panel's
+        variant strip.
+        """
+        self._non_representative_paths = set(non_representative_paths)
+        self._relayout_grid()
+
+    def _on_stacked_toggled(self, checked: bool) -> None:
+        """Re-layout the grid when the user toggles stacked capture-set display."""
+        self._stacked_enabled = checked
+        self._relayout_grid()
+
+    def _visible_paths(self) -> list[Path]:
+        """Return paths to display given current stacked/grouping state."""
+        if self._stacked_enabled and self._non_representative_paths:
+            return [
+                path
+                for path in self._current_image_paths
+                if path not in self._non_representative_paths
+            ]
+        return list(self._current_image_paths)
+
+    def _relayout_grid(self) -> None:
+        """Show/hide and re-flow existing tiles without re-decoding any thumbnails."""
+        visible_paths = self._visible_paths()
+        visible_keys = {str(path) for path in visible_paths}
+        column_count = 1 if (self._stacked_enabled and self._non_representative_paths) else GRID_COLUMN_COUNT
+
+        for key, tile in self._thumb_tiles.items():
+            self.thumb_grid.removeWidget(tile)
+            tile.setVisible(key in visible_keys)
+
+        for index, image_path in enumerate(visible_paths):
+            tile = self._thumb_tiles.get(str(image_path))
+            if tile is not None:
+                self.thumb_grid.addWidget(tile, index // column_count, index % column_count)
+
     def select_path(self, image_path: Path, *, emit_signal: bool = True) -> bool:
         """Select a file tile programmatically when it exists in current grid."""
         key = str(image_path)
@@ -483,6 +536,8 @@ class SourcePanel(QWidget):
             f"{len(self._current_image_paths)} files in {self._current_folder.name}"
         )
 
+        self._non_representative_paths -= {Path(key) for key in removed_keys}
+
         if not self._current_image_paths:
             self._clear_grid()
             empty = QLabel("No .jpg, .jpeg, or .orf files in this folder.")
@@ -492,10 +547,7 @@ class SourcePanel(QWidget):
             self.photo_selected.emit(None)
             return
 
-        for index, image_path in enumerate(self._current_image_paths):
-            tile = self._thumb_tiles.get(str(image_path))
-            if tile is not None:
-                self.thumb_grid.addWidget(tile, index // GRID_COLUMN_COUNT, index % GRID_COLUMN_COUNT)
+        self._relayout_grid()
 
         if was_selected:
             next_path = self._current_image_paths[0]

@@ -293,9 +293,23 @@ class ImagePreviewWidget(QWidget):
         self._variant_buttons.clear()
 
     def _apply_zoom(self) -> None:
-        """Scale current pixmap to slider-selected zoom."""
+        """Scale current pixmap to slider-selected zoom, keeping the viewed point centered."""
         if self._base_pixmap is None:
             return
+
+        h_bar = self.preview_scroll.horizontalScrollBar()
+        v_bar = self.preview_scroll.verticalScrollBar()
+        viewport = self.preview_scroll.viewport()
+        old_pixmap = self.preview_label.pixmap()
+        old_size = old_pixmap.size() if old_pixmap is not None else None
+
+        center_frac_x = 0.5
+        center_frac_y = 0.5
+        if old_size is not None and old_size.width() > 0 and old_size.height() > 0:
+            center_frac_x = (h_bar.value() + viewport.width() / 2) / old_size.width()
+            center_frac_y = (v_bar.value() + viewport.height() / 2) / old_size.height()
+            center_frac_x = max(0.0, min(center_frac_x, 1.0))
+            center_frac_y = max(0.0, min(center_frac_y, 1.0))
 
         scale = self.zoom_slider.value() / 100.0
         scaled = self._base_pixmap.scaled(
@@ -307,6 +321,9 @@ class ImagePreviewWidget(QWidget):
         self.preview_label.setPixmap(scaled)
         self.preview_label.resize(scaled.size())
         self.zoom_percent.setText(f"{self.zoom_slider.value()}%")
+
+        h_bar.setValue(int(center_frac_x * scaled.width() - viewport.width() / 2))
+        v_bar.setValue(int(center_frac_y * scaled.height() - viewport.height() / 2))
 
     def fit_to_view(self) -> None:
         """Set zoom to fit current preview viewport."""

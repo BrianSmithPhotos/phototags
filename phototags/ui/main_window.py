@@ -243,12 +243,45 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_status("")
         self._update_rename_preview()
 
+    def _non_representative_paths_for_current_groups(self) -> set[Path]:
+        """Compute which currently-visible files are non-representative capture-set members.
+
+        A group's representative may have been skipped/removed individually while
+        other members remain; in that case the first remaining member takes over
+        as the visible one instead of the whole set disappearing.
+        """
+        current_paths = self.source_panel.current_image_paths
+        present_members_by_group: dict[int, list[Path]] = {}
+        for path in current_paths:
+            group = self._group_by_path.get(path)
+            if group is None:
+                continue
+            present_members_by_group.setdefault(id(group), []).append(path)
+
+        non_representative: set[Path] = set()
+        for path in current_paths:
+            group = self._group_by_path.get(path)
+            if group is None:
+                continue
+            present_members = present_members_by_group[id(group)]
+            if len(present_members) <= 1:
+                continue
+            representative = (
+                group.representative_path
+                if group.representative_path in present_members
+                else present_members[0]
+            )
+            if path != representative:
+                non_representative.add(path)
+        return non_representative
+
     def _on_folder_selected(self, folder_path: Path) -> None:
         """Start background capture grouping for the selected folder."""
         image_paths = self.source_panel.current_image_paths
         self._capture_groups = tuple()
         self._group_by_path = {}
         self.source_panel.set_group_sizes({})
+        self.source_panel.set_capture_group_membership(set())
 
         if not image_paths:
             self.preview_panel.set_variants([], None)
@@ -432,6 +465,7 @@ class MainWindow(QMainWindow):
         self._group_by_path = result.by_path
         group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
         self.source_panel.set_group_sizes(group_sizes)
+        self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
         self._refresh_variant_strip(self._selected_image_path)
 
         if GROUP_DEBUG_ENABLED and result.debug_text:
@@ -455,6 +489,7 @@ class MainWindow(QMainWindow):
         self._capture_groups = tuple()
         self._group_by_path = {}
         self.source_panel.set_group_sizes({})
+        self.source_panel.set_capture_group_membership(set())
         self._refresh_variant_strip(self._selected_image_path)
         self.metadata_panel.set_save_status(f"Grouping failed: {error}", is_error=True)
 
@@ -1656,6 +1691,7 @@ class MainWindow(QMainWindow):
         ]
         if success_paths:
             self.source_panel.mark_skipped_many(success_paths)
+            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
 
         self._restore_metadata_action_controls()
         if result.failure_count == 0:
@@ -1709,6 +1745,7 @@ class MainWindow(QMainWindow):
             return
         skipped_path = self._selected_image_path
         self.source_panel.mark_skipped(skipped_path)
+        self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
         self.metadata_panel.set_save_status(f"Skipped {skipped_path.name}")
 
     def _on_skip_set_selected(self) -> None:
@@ -1722,10 +1759,12 @@ class MainWindow(QMainWindow):
         group = self._group_by_path.get(selected)
         if group is None or len(group.members) <= 1:
             self.source_panel.mark_skipped(selected)
+            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             self.metadata_panel.set_save_status(f"Skipped {selected.name}")
             return
 
         self.source_panel.mark_skipped_many(list(group.members))
+        self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
         self.metadata_panel.set_save_status(f"Skipped capture set ({len(group.members)} files)")
 
     def _on_variant_selected(self, image_path: Path) -> None:
