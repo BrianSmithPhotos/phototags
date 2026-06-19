@@ -35,6 +35,13 @@ OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 OPENROUTER_DEFAULT_MODEL = os.getenv("PHOTOTAGS_OPENROUTER_MODEL", "google/gemini-2.5-flash")
 OPENROUTER_TIMEOUT_SECONDS = _read_int_env("PHOTOTAGS_OPENROUTER_TIMEOUT_SECONDS", 120, minimum=10)
+# App-attribution headers: without these, OpenRouter logs usage under "Unknown" in
+# the dashboard. HTTP-Referer must be a real-looking URL for an app page to
+# register at all; X-OpenRouter-Title is just the display name.
+OPENROUTER_APP_URL = os.getenv(
+    "PHOTOTAGS_OPENROUTER_APP_URL", "https://github.com/BrianSmithPhotos/phototags"
+)
+OPENROUTER_APP_NAME = os.getenv("PHOTOTAGS_OPENROUTER_APP_NAME", "MacPhotoMaster (phototags)")
 
 LOGGER = logging.getLogger(__name__)
 
@@ -142,6 +149,8 @@ class OpenRouterProvider(AiProvider):
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": OPENROUTER_APP_URL,
+                "X-OpenRouter-Title": OPENROUTER_APP_NAME,
             },
             method="POST",
         )
