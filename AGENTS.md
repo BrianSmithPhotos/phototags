@@ -1,5 +1,9 @@
 # Agent Instructions: Mac Photo Manager (MacPhotoMaster)
 
+Stack, architecture, and coding-style guidance now lives in `CLAUDE.md` — read that first. This
+file is kept for tools that look for `AGENTS.md` specifically; the Phase 2 feature notes below are
+historical context for scope that has since been implemented (see `docs/PLAN.md` for current status).
+
 You are an expert Python desktop application developer specializing in macOS, PySide6, and modern Python tooling (`uv`). Your task is to help build a local Mac application that reads photos from an SD card, edits EXIF data, renames files, and moves them to local Mac storage.
 
 ## 1. Project Context & Stack

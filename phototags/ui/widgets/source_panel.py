@@ -28,6 +28,7 @@ from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".orf"}
 THUMBNAIL_MAX_EDGE = 220
+GRID_COLUMN_COUNT = 2
 
 
 class ThumbnailTile(QFrame):
@@ -312,10 +313,9 @@ class SourcePanel(QWidget):
             self.photo_selected.emit(None)
             return
 
-        column_count = 2
         for index, image_path in enumerate(image_paths):
-            row = index // column_count
-            col = index % column_count
+            row = index // GRID_COLUMN_COUNT
+            col = index % GRID_COLUMN_COUNT
             tile = ThumbnailTile(image_path=image_path)
             tile.set_group_size(self._group_sizes.get(image_path, 1))
             tile.clicked.connect(self._on_tile_clicked)
@@ -449,14 +449,58 @@ class SourcePanel(QWidget):
     def mark_skipped(self, image_path: Path) -> None:
         """Hide a file from the current session without touching disk."""
         self._skipped_paths.add(image_path)
-        self.reload_current_folder()
+        self._remove_from_session([image_path])
 
     def mark_skipped_many(self, image_paths: list[Path]) -> None:
         """Hide many files from the current session without touching disk."""
         if not image_paths:
             return
         self._skipped_paths.update(image_paths)
-        self.reload_current_folder()
+        self._remove_from_session(image_paths)
+
+    def _remove_from_session(self, image_paths: list[Path]) -> None:
+        """Remove specific tiles from the visible grid without reloading the folder.
+
+        Avoids re-triggering thumbnail decoding for every remaining file, which a
+        full folder reload would do.
+        """
+        removed_keys = {str(path) for path in image_paths}
+        self._current_image_paths = [
+            path for path in self._current_image_paths if str(path) not in removed_keys
+        ]
+
+        was_selected = self._selected_path is not None and str(self._selected_path) in removed_keys
+
+        for key in removed_keys:
+            tile = self._thumb_tiles.pop(key, None)
+            if tile is not None:
+                self.thumb_grid.removeWidget(tile)
+                tile.deleteLater()
+            self._thumbnail_pixmaps.pop(Path(key), None)
+            self._group_sizes.pop(Path(key), None)
+
+        self.file_count_label.setText(
+            f"{len(self._current_image_paths)} files in {self._current_folder.name}"
+        )
+
+        if not self._current_image_paths:
+            self._clear_grid()
+            empty = QLabel("No .jpg, .jpeg, or .orf files in this folder.")
+            empty.setObjectName("supportText")
+            self.thumb_grid.addWidget(empty, 0, 0)
+            self._selected_path = None
+            self.photo_selected.emit(None)
+            return
+
+        for index, image_path in enumerate(self._current_image_paths):
+            tile = self._thumb_tiles.get(str(image_path))
+            if tile is not None:
+                self.thumb_grid.addWidget(tile, index // GRID_COLUMN_COUNT, index % GRID_COLUMN_COUNT)
+
+        if was_selected:
+            next_path = self._current_image_paths[0]
+            self._set_selected_path(next_path)
+            self.photo_selected.emit(next_path)
 
     def reload_current_folder(self) -> None:
         """Reload thumbnails for the current folder path."""

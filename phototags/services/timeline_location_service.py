@@ -12,7 +12,7 @@ import sqlite3
 import threading
 
 
-DEFAULT_MAX_MATCH_SECONDS = 60 * 60
+DEFAULT_MAX_MATCH_SECONDS = 30 * 60
 
 
 @dataclass(slots=True)

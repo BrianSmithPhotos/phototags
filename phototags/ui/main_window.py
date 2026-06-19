@@ -540,7 +540,7 @@ class MainWindow(QMainWindow):
         self.preview_panel.skip_single_button.setEnabled(False)
         self.preview_panel.skip_set_button.setEnabled(False)
         self.metadata_panel.set_save_status(
-            f"Saving description + keywords for {len(unique_paths)} file(s) ({scope_label})..."
+            f"Saving description + keywords + GPS for {len(unique_paths)} file(s) ({scope_label})..."
         )
 
         signals = MetadataBatchSaveSignals()
@@ -603,7 +603,7 @@ class MainWindow(QMainWindow):
         self._restore_metadata_action_controls()
         if result.failure_count == 0:
             self.metadata_panel.set_save_status(
-                f"Saved description + keywords for {result.success_count}/{result.total_count} files ({result.scope_label})"
+                f"Saved description + keywords + GPS for {result.success_count}/{result.total_count} files ({result.scope_label})"
             )
         else:
             first_failure = next((item for item in result.outcomes if item.error), None)

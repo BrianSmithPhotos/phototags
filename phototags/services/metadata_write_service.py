@@ -111,14 +111,22 @@ class MetadataWriteService:
             command.append(f"-IPTC:Keywords={keyword}")
             command.append(f"-XMP-dc:Subject={keyword}")
         if normalized_gps is not None:
+            latitude, longitude, altitude = normalized_gps
             command.extend(
                 [
-                    f"-GPSLatitude={normalized_gps[0]}",
-                    f"-GPSLongitude={normalized_gps[1]}",
+                    f"-GPSLatitude={latitude}",
+                    f"-GPSLatitudeRef={'N' if latitude >= 0 else 'S'}",
+                    f"-GPSLongitude={longitude}",
+                    f"-GPSLongitudeRef={'E' if longitude >= 0 else 'W'}",
                 ]
             )
-            if normalized_gps[2] is not None:
-                command.append(f"-GPSAltitude={normalized_gps[2]}")
+            if altitude is not None:
+                command.extend(
+                    [
+                        f"-GPSAltitude={altitude}",
+                        f"-GPSAltitudeRef={'0' if altitude >= 0 else '1'}",
+                    ]
+                )
         command.append(str(image_path))
         return command
 

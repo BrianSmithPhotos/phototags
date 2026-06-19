@@ -1,8 +1,27 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
 This document is the active implementation snapshot + next-step checklist.
+
+## 0. Recent Fixes (2026-06-18)
+
+- [x] Fixed GPS write not persisting hemisphere correctly: `exiftool` was writing
+  `GPSLatitude`/`GPSLongitude`/`GPSAltitude` magnitudes but never set
+  `GPSLatitudeRef`/`GPSLongitudeRef`/`GPSAltitudeRef`, so most readers showed no
+  location or the wrong hemisphere for southern/western coordinates. Fixed in
+  `metadata_write_service.py`; verified via direct exiftool round-trip test.
+- [x] Fixed skip (single image / capture set / process-success) triggering a full
+  thumbnail grid rebuild and re-decoding every visible thumbnail. `source_panel.py`
+  now removes just the skipped tile(s) and re-flows the grid instead of reloading
+  the folder.
+- [x] Tightened timeline match window from 60 to 30 minutes based on analysis of
+  the cached timeline data (98%+ of recent consecutive points are within 30
+  minutes of each other).
+- [x] Extracted an `AiProvider` interface (`ai_provider.py`) with `OllamaProvider`
+  as the default implementation (`ollama_provider.py`), so `ai_suggestion_service.py`
+  no longer contains Ollama HTTP/parsing details. Groundwork for OpenRouter support
+  and a standalone model-comparison eval harness.
 
 ## 1. Completed Core Scope
 
@@ -103,7 +122,7 @@ Implementation note:
 
 ### Matching behavior
 
-- [x] Nearest timestamp lookup with strict `<= 60 minutes` window.
+- [x] Nearest timestamp lookup with strict `<= 30 minutes` window (tightened from 60; cached timeline data shows 98%+ of consecutive recent points are within 30 minutes of each other, so little real coverage is lost).
 - [x] No match in window -> GPS remains blank.
 - [x] Match ordering prefers better source/accuracy when ties occur.
 
@@ -152,7 +171,7 @@ Use this when importing a new full-history timeline export.
 
 - [ ] For files without EXIF GPS, confirm nearest timeline match appears.
 - [ ] Confirm status shows match age/source and wraps cleanly.
-- [ ] Confirm no suggestion is applied when nearest point is more than 60 minutes away.
+- [ ] Confirm no suggestion is applied when nearest point is more than 30 minutes away.
 - [ ] Confirm `Apply Suggested GPS` writes editable lat/lon/alt fields.
 
 ### Preservation behavior
@@ -211,5 +230,5 @@ Use this when importing a new full-history timeline export.
 
 - SD card workflow remains non-destructive (skip, no delete).
 - Batch `Location` remains a manual session label for naming context.
-- Timeline matching remains nearest-time within one hour.
+- Timeline matching remains nearest-time within 30 minutes.
 - For altitude, timeline data is preferred when present, but source reliability is surfaced to the user.
