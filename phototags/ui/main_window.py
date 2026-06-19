@@ -455,11 +455,13 @@ class MainWindow(QMainWindow):
         result: CaptureGroupingResult,
         is_final_batch: bool,
     ) -> None:
-        """Merge one batch's capture grouping result into current UI state.
+        """Apply the latest cumulative capture grouping result to current UI state.
 
-        Grouping runs batch by batch (see `CaptureGroupLoadTask`), so this fires once
-        per batch; merge rather than overwrite so earlier batches already applied to
-        the grid stay visible while later files in the folder are still resolving.
+        EXIF reads run batch by batch (see `CaptureGroupLoadTask`), but each emitted
+        result is grouping recomputed over every file read so far, not just the
+        latest batch in isolation — so this replaces prior state outright rather
+        than merging, otherwise a set whose members crossed a batch boundary would
+        leave both the old split groups and the corrected one in `_capture_groups`.
         """
         if is_final_batch:
             self._finish_group_job(job_id)
@@ -468,8 +470,8 @@ class MainWindow(QMainWindow):
         if Path(folder_path) != self.source_panel.current_folder:
             return
 
-        self._capture_groups = self._capture_groups + result.groups
-        self._group_by_path.update(result.by_path)
+        self._capture_groups = result.groups
+        self._group_by_path = dict(result.by_path)
         group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
         self.source_panel.set_group_sizes(group_sizes)
         self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())

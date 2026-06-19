@@ -212,6 +212,16 @@ Use this when importing a new full-history timeline export.
 
 ### Grouping quality refinement
 
+- [x] Fixed: batched EXIF grouping (added for incremental UI feedback) was
+  splitting same-timestamp sets (e.g. Art Filter Bracket renders of one shot)
+  whenever their files landed in different batches, since each batch called
+  `build_groups()` in isolation. `CaptureGroupService.build_groups_from_metadata`
+  now separates the I/O (batched, for responsiveness) from the grouping
+  computation, which `CaptureGroupLoadTask` recomputes over the full accumulated
+  metadata after every batch (cheap, no extra exiftool calls) — so a set is never
+  split by an arbitrary batch boundary. `main_window._on_groups_loaded` now
+  replaces `_capture_groups`/`_group_by_path` per emission instead of
+  concatenating, since each emission is already the full cumulative result.
 - [ ] Validate whether second-level grouping causes false merges in dense bursts.
 - [ ] Evaluate stronger grouping keys (camera serial + subseconds + exposure guards) only if needed after field testing.
 

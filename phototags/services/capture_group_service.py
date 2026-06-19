@@ -95,7 +95,25 @@ class CaptureGroupService:
         if not image_paths:
             return CaptureGroupingResult(groups=tuple(), by_path={}, debug_text="")
 
-        metadata_by_path = self._read_metadata_for_paths(image_paths)
+        metadata_by_path = self.read_metadata_for_paths(image_paths)
+        return self.build_groups_from_metadata(image_paths, metadata_by_path)
+
+    def build_groups_from_metadata(
+        self, image_paths: list[Path], metadata_by_path: dict[Path, dict[str, Any]]
+    ) -> CaptureGroupingResult:
+        """Compute capture groups from already-read EXIF metadata (no I/O).
+
+        Grouping must see every file that shares a capture timestamp in one pass —
+        a set sharing one timestamp (for example an Art Filter Bracket, where every
+        frame is a different render of the same shot) is otherwise split if some of
+        its files were grouped separately before the rest had been read. Callers
+        that read metadata in I/O batches for responsiveness (see
+        `CaptureGroupLoadTask`) should call this with the full set of paths read so
+        far each time, not just the latest batch.
+        """
+        if not image_paths:
+            return CaptureGroupingResult(groups=tuple(), by_path={}, debug_text="")
+
         records = [
             self._record_for_path(path=path, metadata=metadata_by_path.get(path, {}))
             for path in sorted(image_paths, key=lambda item: item.name.casefold())
@@ -134,7 +152,7 @@ class CaptureGroupService:
             debug_text="\n".join(debug_lines),
         )
 
-    def _read_metadata_for_paths(self, image_paths: list[Path]) -> dict[Path, dict[str, Any]]:
+    def read_metadata_for_paths(self, image_paths: list[Path]) -> dict[Path, dict[str, Any]]:
         """Read grouping tags from exiftool in chunks."""
         metadata_by_path: dict[Path, dict[str, Any]] = {}
         sorted_paths = sorted(image_paths, key=lambda item: item.name.casefold())
