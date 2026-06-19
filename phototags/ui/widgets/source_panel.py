@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStyle,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -30,6 +31,11 @@ from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".orf"}
 THUMBNAIL_MAX_EDGE = 220
 GRID_COLUMN_COUNT = 2
+THUMBNAIL_TILE_WIDTH = 156
+THUMBNAIL_TILE_HEIGHT = 168
+GRID_SPACING = 8
+PANEL_CONTENT_MARGIN = 12
+PANEL_FRAME_BORDER = 1
 
 
 class ThumbnailTile(QFrame):
@@ -46,7 +52,7 @@ class ThumbnailTile(QFrame):
     def _build_ui(self) -> None:
         self.setObjectName("thumbnailTile")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(156, 168)
+        self.setFixedSize(THUMBNAIL_TILE_WIDTH, THUMBNAIL_TILE_HEIGHT)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -247,12 +253,14 @@ class SourcePanel(QWidget):
         self.thumb_container = QWidget()
         self.thumb_grid = QGridLayout(self.thumb_container)
         self.thumb_grid.setContentsMargins(0, 0, 0, 0)
-        self.thumb_grid.setSpacing(8)
+        self.thumb_grid.setSpacing(GRID_SPACING)
         self.thumb_scroll.setWidget(self.thumb_container)
         splitter.addWidget(self.thumb_scroll)
         splitter.setSizes([110, 610])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+
+        self._apply_panel_max_width()
 
         self.setStyleSheet(
             f"""
@@ -458,6 +466,7 @@ class SourcePanel(QWidget):
     def _on_stacked_toggled(self, checked: bool) -> None:
         """Re-layout the grid when the user toggles stacked capture-set display."""
         self._stacked_enabled = checked
+        self._apply_panel_max_width()
         self._relayout_grid()
 
     def _visible_paths(self) -> list[Path]:
@@ -470,11 +479,26 @@ class SourcePanel(QWidget):
             ]
         return list(self._current_image_paths)
 
+    def _apply_panel_max_width(self) -> None:
+        """Cap panel width to fit exactly one thumbnail column when stacked.
+
+        Stacked mode (the default) only ever shows one tile per capture set, so the
+        left column should not be wider than a single thumbnail; any extra space a
+        user drags into this column instead flows to the middle preview panel,
+        since QSplitter gives slack to siblings once a child hits its maximumWidth.
+        Un-stacking shows the full 2-column grid, so the cap widens to fit that.
+        """
+        scrollbar_extent = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        margins = 2 * PANEL_CONTENT_MARGIN + 2 * PANEL_FRAME_BORDER
+        column_count = 1 if self._stacked_enabled else GRID_COLUMN_COUNT
+        columns_width = column_count * THUMBNAIL_TILE_WIDTH + (column_count - 1) * GRID_SPACING
+        self.setMaximumWidth(columns_width + scrollbar_extent + margins)
+
     def _relayout_grid(self) -> None:
         """Show/hide and re-flow existing tiles without re-decoding any thumbnails."""
         visible_paths = self._visible_paths()
         visible_keys = {str(path) for path in visible_paths}
-        column_count = 1 if (self._stacked_enabled and self._non_representative_paths) else GRID_COLUMN_COUNT
+        column_count = 1 if self._stacked_enabled else GRID_COLUMN_COUNT
 
         for key, tile in self._thumb_tiles.items():
             self.thumb_grid.removeWidget(tile)

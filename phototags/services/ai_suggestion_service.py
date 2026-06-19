@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -21,6 +22,7 @@ from phototags.services.ai_provider import (
     AiSuggestionTimeoutError,
 )
 from phototags.services.ollama_provider import OLLAMA_DEFAULT_MODEL, OllamaProvider
+from phototags.services.openrouter_provider import OPENROUTER_DEFAULT_MODEL, OpenRouterProvider
 
 __all__ = [
     "AiSuggestionError",
@@ -29,7 +31,21 @@ __all__ = [
     "AiSuggestionResult",
     "AiSuggestionService",
     "OLLAMA_DEFAULT_MODEL",
+    "OPENROUTER_DEFAULT_MODEL",
+    "DEFAULT_PROVIDER_MODEL",
 ]
+
+# Provider selection is an env var, not a UI control: the model field is already
+# free text, and a typed model id only makes sense for whichever provider is active.
+_PROVIDER_NAME = os.getenv("PHOTOTAGS_AI_PROVIDER", "ollama").strip().casefold()
+DEFAULT_PROVIDER_MODEL = OPENROUTER_DEFAULT_MODEL if _PROVIDER_NAME == "openrouter" else OLLAMA_DEFAULT_MODEL
+
+
+def _default_provider() -> AiProvider:
+    """Build the AiProvider selected by PHOTOTAGS_AI_PROVIDER (default: ollama)."""
+    if _PROVIDER_NAME == "openrouter":
+        return OpenRouterProvider()
+    return OllamaProvider()
 
 SYSTEM_PROMPT = (
     "You are a photography metadata assistant. "
@@ -138,13 +154,13 @@ class AiSuggestionService:
     """Request AI suggestions from a vision-capable chat provider."""
 
     def __init__(self, provider: AiProvider | None = None) -> None:
-        self._provider = provider or OllamaProvider()
+        self._provider = provider or _default_provider()
 
     def suggest_for_image(
         self,
         *,
         image_path: Path,
-        model: str = OLLAMA_DEFAULT_MODEL,
+        model: str = DEFAULT_PROVIDER_MODEL,
         existing_keywords_text: str = "",
         existing_description: str = "",
         capture_context: str = "",

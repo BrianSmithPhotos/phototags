@@ -233,9 +233,21 @@ Use this when importing a new full-history timeline export.
 
 ### AI provider expansion
 
-- [ ] Implement an `OpenRouterProvider` (implements `AiProvider` in `ai_provider.py`)
-  as an alternative to `OllamaProvider`; add provider selection (env var or UI
-  dropdown) and an `OPENROUTER_API_KEY` slot in env config.
+- [x] Implement `OpenRouterProvider` (`openrouter_provider.py`), implementing
+  `AiProvider`. Auth via `OPENROUTER_API_KEY` env var (must be exported in the
+  process environment — this project does not auto-load `.env`). Vision capability
+  is checked against `architecture.input_modalities` from `GET /api/v1/models`.
+  `think=False` maps to `reasoning: {"effort": "none", "exclude": true}` (a no-op
+  hint for models that don't support it).
+- [x] Provider selection via `PHOTOTAGS_AI_PROVIDER` env var (`ollama` default,
+  `openrouter` to switch). `AiSuggestionService` picks the provider and its
+  matching default model (`DEFAULT_PROVIDER_MODEL`) at import time; no UI change
+  needed since the existing model field is already free text.
+  Optional override: `PHOTOTAGS_OPENROUTER_MODEL` (default
+  `google/gemini-2.5-flash` — cheap/fast, large context, vision-capable). For
+  stronger species/landmark identification, set the model field (or
+  `PHOTOTAGS_OPENROUTER_MODEL`) to `anthropic/claude-sonnet-4.6` or
+  `google/gemini-3.1-pro-preview`.
 - [ ] Build a standalone eval harness script (not part of the app) that runs a set
   of sample images + expected-keyword answers through the `AiProvider` interface
   to compare models/providers (keyword-overlap scoring, not LLM-graded).

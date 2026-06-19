@@ -12,7 +12,7 @@ from PySide6.QtCore import QThreadPool
 from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
-from phototags.services.ai_suggestion_service import OLLAMA_DEFAULT_MODEL, AiSuggestionService
+from phototags.services.ai_suggestion_service import AiSuggestionService, DEFAULT_PROVIDER_MODEL
 from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
 from phototags.services.elevation_lookup_service import ElevationLookupService
 from phototags.services.exif_service import ExifService, ExifUiData
@@ -178,7 +178,7 @@ class MainWindow(QMainWindow):
         self.metadata_panel.gps_longitude_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.gps_altitude_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.gps_altitude_edit.textEdited.connect(self._on_altitude_manually_edited)
-        self.metadata_panel.set_ai_model_name(OLLAMA_DEFAULT_MODEL)
+        self.metadata_panel.set_ai_model_name(DEFAULT_PROVIDER_MODEL)
         self.preview_panel.skip_single_button.clicked.connect(self._on_skip_single_selected)
         self.preview_panel.skip_set_button.clicked.connect(self._on_skip_set_selected)
         self._skip_shortcut = QShortcut(QKeySequence("Meta+Backspace"), self)
@@ -453,16 +453,23 @@ class MainWindow(QMainWindow):
         job_id: int,
         folder_path: str,
         result: CaptureGroupingResult,
+        is_final_batch: bool,
     ) -> None:
-        """Apply capture grouping result to current UI state."""
-        self._finish_group_job(job_id)
+        """Merge one batch's capture grouping result into current UI state.
+
+        Grouping runs batch by batch (see `CaptureGroupLoadTask`), so this fires once
+        per batch; merge rather than overwrite so earlier batches already applied to
+        the grid stay visible while later files in the folder are still resolving.
+        """
+        if is_final_batch:
+            self._finish_group_job(job_id)
         if request_id != self._group_request_id:
             return
         if Path(folder_path) != self.source_panel.current_folder:
             return
 
-        self._capture_groups = result.groups
-        self._group_by_path = result.by_path
+        self._capture_groups = self._capture_groups + result.groups
+        self._group_by_path.update(result.by_path)
         group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
         self.source_panel.set_group_sizes(group_sizes)
         self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
@@ -479,18 +486,13 @@ class MainWindow(QMainWindow):
         folder_path: str,
         error: str,
     ) -> None:
-        """Handle grouping failure while keeping normal selection workflow active."""
+        """Handle one batch's grouping failure, keeping already-applied batches intact."""
         self._finish_group_job(job_id)
         if request_id != self._group_request_id:
             return
         if Path(folder_path) != self.source_panel.current_folder:
             return
 
-        self._capture_groups = tuple()
-        self._group_by_path = {}
-        self.source_panel.set_group_sizes({})
-        self.source_panel.set_capture_group_membership(set())
-        self._refresh_variant_strip(self._selected_image_path)
         self.metadata_panel.set_save_status(f"Grouping failed: {error}", is_error=True)
 
     def _on_exif_failed(
@@ -691,7 +693,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_ai_status("No file selected", is_error=True)
             return
         representative_path, target_paths = self._ai_targets_for(selected_path)
-        model_name = self.metadata_panel.ai_model_name() or OLLAMA_DEFAULT_MODEL
+        model_name = self.metadata_panel.ai_model_name() or DEFAULT_PROVIDER_MODEL
         self.metadata_panel.set_ai_model_name(model_name)
 
         existing_keywords_by_path: dict[str, str] = {}

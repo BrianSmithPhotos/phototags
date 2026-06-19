@@ -15,6 +15,7 @@ GROUP_READ_TAGS: tuple[str, ...] = (
     "CreateDate",
 )
 GROUP_READ_CHUNK_SIZE = 250
+DEFAULT_GROUP_BATCH_SIZE = 50
 
 
 @dataclass(slots=True)
@@ -48,6 +49,35 @@ class _CaptureRecord:
 
 class CaptureGroupError(RuntimeError):
     """Raised when grouping metadata cannot be read or parsed."""
+
+
+def batch_image_paths(
+    image_paths: list[Path], batch_size: int = DEFAULT_GROUP_BATCH_SIZE
+) -> list[list[Path]]:
+    """Split filename-sorted paths into batches without splitting same-stem pairs.
+
+    Files are sorted by name, so a same-shot JPG+RAW pair (for example
+    P1010001.JPG and P1010001.ORF) sit adjacent. A batch boundary that would fall
+    between such a pair is pushed forward by one file instead, so each batch's
+    EXIF-based grouping never has to merge across batch lines for the common
+    one-JPG-one-RAW case. Same-second bursts of unrelated stems can still rarely
+    straddle a boundary; that risk already exists in the single-pass grouping this
+    replaces and is unchanged by batching.
+    """
+    if not image_paths:
+        return []
+
+    sorted_paths = sorted(image_paths, key=lambda item: item.name.casefold())
+    total = len(sorted_paths)
+    batches: list[list[Path]] = []
+    start = 0
+    while start < total:
+        end = min(start + batch_size, total)
+        while end < total and sorted_paths[end - 1].stem.casefold() == sorted_paths[end].stem.casefold():
+            end += 1
+        batches.append(sorted_paths[start:end])
+        start = end
+    return batches
 
 
 class CaptureGroupService:
