@@ -90,8 +90,12 @@ Implementation note:
 - [x] Crop-refinement fallback when subject specificity likely missing.
 - [x] AI status reporting for refinement attempted/applied.
 - [x] Timeout-aware fallback chain:
-  - Primary request
-  - Retry with 50% center crop on timeout
+  - Primary request (full quality: model default reasoning/"thinking" left on)
+  - Retry with 50% center crop **and thinking disabled** on timeout/empty response
+    (measured ~4x latency overhead from reasoning tokens on `qwen3.6:35b`; the
+    timeout-retry is a salvage path, not a quality path, so it trades reasoning
+    for speed). `AiProvider.chat(..., think: bool)` is the hook; providers that
+    don't support a reasoning toggle ignore it.
   - Request timing + payload-size logging for diagnostics
 - [x] Empty-response hardening:
   - Broad response-content extraction fallbacks

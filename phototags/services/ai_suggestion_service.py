@@ -183,7 +183,8 @@ class AiSuggestionService:
                 else "returned empty content"
             )
             LOGGER.warning(
-                "Provider primary request %s for %s; retrying with %.0f%% center crop",
+                "Provider primary request %s for %s; retrying with %.0f%% center crop "
+                "and thinking disabled",
                 reason_label,
                 image_path.name,
                 TIMEOUT_RETRY_CENTER_CROP_SCALE * 100,
@@ -194,6 +195,7 @@ class AiSuggestionService:
                     prompt=prompt,
                     image_payloads=[center_crop_payload],
                     request_label=f"{request_label_prefix}:timeout-center-crop",
+                    think=False,
                 )
             except AiSuggestionEmptyResponseError as inner_exc:
                 raise AiSuggestionError(
@@ -346,6 +348,7 @@ class AiSuggestionService:
         prompt: str,
         image_payloads: list[str],
         request_label: str = "",
+        think: bool = True,
     ) -> AiSuggestionResult:
         """Run one suggestion request from prepared base64 image payloads."""
         content = self._provider.chat(
@@ -354,6 +357,7 @@ class AiSuggestionService:
             user_prompt=prompt,
             image_payloads=image_payloads,
             request_label=request_label,
+            think=think,
         )
         return self._parse_result(content)
 

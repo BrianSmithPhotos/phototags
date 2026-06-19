@@ -119,9 +119,10 @@ class OllamaProvider(AiProvider):
         user_prompt: str,
         image_payloads: list[str],
         request_label: str = "",
+        think: bool = True,
     ) -> str:
         """Run one chat request, retrying once with a larger budget on empty content."""
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "stream": False,
             "messages": [
@@ -132,6 +133,8 @@ class OllamaProvider(AiProvider):
                 "temperature": 0.2,
             },
         }
+        if not think:
+            payload["think"] = False
         if OLLAMA_MAX_PREDICT is not None:
             payload["options"]["num_predict"] = OLLAMA_MAX_PREDICT
         if OLLAMA_KEEP_ALIVE:

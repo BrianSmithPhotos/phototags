@@ -37,8 +37,13 @@ class AiProvider(ABC):
         user_prompt: str,
         image_payloads: list[str],
         request_label: str = "",
+        think: bool = True,
     ) -> str:
         """Send one chat request with base64 image payloads and return the raw text reply.
+
+        `think` is a hint, not a guarantee: providers/models without a reasoning toggle
+        ignore it. Callers set it False to trade reasoning quality for speed on a
+        request that has already failed once (e.g. a post-timeout retry).
 
         Implementations own their own timeout/retry behavior and must raise
         AiSuggestionTimeoutError/AiSuggestionEmptyResponseError/AiSuggestionError
