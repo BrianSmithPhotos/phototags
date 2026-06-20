@@ -1,34 +1,4 @@
 {
-  "P1234567.JPG": {
-    "description": "A snowy egret wading in shallow water, hunting for fish near a marsh shoreline.",
-    "keywords": [
-      "snowy egret",
-      "egretta thula",
-      "wading bird",
-      "shorebird",
-      "marsh",
-      "wetland",
-      "wildlife",
-      "white plumage",
-      "hunting",
-      "shallow water"
-    ]
-  },
-  "P1234600.ORF": {
-    "description": "A red-flowering currant shrub in bloom, with clusters of pink-red blossoms.",
-    "keywords": [
-      "red-flowering currant",
-      "ribes sanguineum",
-      "shrub",
-      "flowering plant",
-      "pink blossom",
-      "spring bloom",
-      "garden plant",
-      "native plant",
-      "pollinator plant",
-      "leaves"
-    ]
-  },
   "EVAL001.JPG": {
     "description": "A northern harrier (Circus hudsonius) glides gracefully in flight over a rural landscape during the warm light of golden hour.",
     "keywords": [
@@ -68,7 +38,7 @@
     ]
   },
   "EVAL003.JPG": {
-    "description": "A flock of American avocets (Recurvirostra americana) in non-breeding plumage forage in the water alongside ducks.",
+    "description": "A flock of American avocets (Recurvirostra americana) in non-breeding plumage forage in the water alongside female Greater Scaup.",
     "keywords": [
       "american avocet",
       "recurvirostra americana",
@@ -80,16 +50,17 @@
       "foraging",
       "water",
       "swimming",
-      "ducks",
+      "greater scaup",
+      "Aythya marila",
       "wetland",
       "avian"
     ]
   },
   "EVAL004.JPG": {
-    "description": "A scenic view of Hetch Hetchy Reservoir nestled within the granite cliffs of Yosemite National Park, California, surrounded by pine trees under a blue sky.",
+    "description": "A scenic view of Donnell Reservoir nestled within the granite cliffs from the Donnell Vista on Sonora Pass Hwy 108, California, surrounded by pine trees under a blue sky.",
     "keywords": [
-      "hetch hetchy",
-      "yosemite national park",
+      "Sonora",
+      "Donnell Reservoir",
       "california",
       "reservoir",
       "canyon",
@@ -102,15 +73,19 @@
       "sierra nevada",
       "valley",
       "mountains",
+      "vista",
+      "hwy 108",
       "nature"
     ]
   },
   "EVAL005.JPG": {
-    "description": "An abstract zoom burst photograph of a waterfall cascading down dark rocks, creating a dynamic radial motion blur effect with muted green and blue tones.",
+    "description": "An abstract zoom burst photograph of a waterfall cascading down dark rocks, on the trail towarss Sardine Falls, creating a dynamic radial motion blur effect with muted green and blue tones.",
     "keywords": [
       "abstract",
       "waterfall",
       "motion blur",
+      "sardine falls",
+      "icm",
       "zoom burst",
       "radial blur",
       "dynamic",
@@ -124,12 +99,15 @@
     ]
   },
   "EVAL006.JPG": {
-    "description": "A mountain stream flows through a lush meadow bordered by likely willows (Salix) and big sagebrush (Artemisia tridentata).",
+    "description": "A mountain stream flows through a lush meadow bordered by likely willows (Salix) and big sagebrush (Artemisia tridentata), with branches laid to make a bridge.",
     "keywords": [
       "stream",
       "creek",
       "meadow",
+      "crossing",
+      "sardine falls",
       "riparian",
+      "hwy 108",
       "sagebrush",
       "artemisia tridentata",
       "willow",
@@ -141,7 +119,7 @@
     ]
   },
   "EVAL007.JPG": {
-    "description": "Gondola cabins ascend Mammoth Mountain on a hazy day, surrounded by pine trees and snow-dusted peaks.",
+    "description": "Gondola cabins ascend Mammoth Mountain seen through scratched windows, surrounded by pine trees and snow-dusted peaks.",
     "keywords": [
       "gondola",
       "cable car",
@@ -183,10 +161,12 @@
     ]
   },
   "EVAL009.JPG": {
-    "description": "An osprey (Pandion haliaetus) nest sits atop a tufa tower under a clear blue sky, likely at Mono Lake, California.",
+    "description": "An Osprey (Pandion haliaetus) nest, with young Osprey sits atop a tufa tower under a clear blue sky, at Mono Lake, California, with a Purple-green Swallow (Hirundo pyrrhonota) perched nearby.",
     "keywords": [
       "osprey",
       "pandion haliaetus",
+      "purple-green swallow",
+      "hirundo pyrrhonota",
       "nest",
       "tufa",
       "mono lake",
@@ -200,10 +180,10 @@
     ]
   },
   "EVAL010.JPG": {
-    "description": "A likely sagebrush sparrow (Artemisiospiza nevadensis) perches atop a sagebrush shrub (Artemisia tridentata) with its beak open in song.",
+    "description": "A Brewer's sparrow (Spizella breweri) perches atop a sagebrush shrub (Artemisia tridentata) with its beak open in song.",
     "keywords": [
-      "sagebrush sparrow",
-      "artemisiospiza nevadensis",
+      "brewer's sparrow",
+      "spizella breweri",
       "bird",
       "songbird",
       "wildlife",
@@ -231,6 +211,7 @@
       "sierra nevada",
       "lodgepole pine",
       "pinus contorta",
+      "kayaks",
       "nature",
       "landscape",
       "wilderness",
@@ -239,10 +220,10 @@
     ]
   },
   "EVAL012.JPG": {
-    "description": "A deep volcanic fissure at the Earthquake Fault near Mammoth Lakes, California, surrounded by lodgepole pines (*Pinus contorta*) and distant mountains.",
+    "description": "A deep volcanic fissure near Seven Lakes Point Loop near Mammoth Lakes, California, surrounded by lodgepole pines (*Pinus contorta*) and distant mountains.",
     "keywords": [
-      "earthquake fault",
       "mammoth lakes",
+      "seven lakes point loop",
       "california",
       "fissure",
       "canyon",
@@ -272,16 +253,19 @@
       "nature",
       "flora",
       "pink flower",
+      "convict lake",
       "native plant"
     ]
   },
   "EVAL014.JPG": {
-    "description": "A scenic view of Half Dome rising above a dense pine forest under a clear blue sky in Yosemite National Park, California.",
+    "description": "A scenic view of Half Dome rising above a dense pine forest under a clear blue sky in Yosemite National Park, California, from Olmsted Point.",
     "keywords": [
       "half dome",
       "yosemite national park",
+      "olmsted point",
       "california",
       "sierra nevada",
+      "hwy 120",
       "granite",
       "mountain",
       "forest",
@@ -294,10 +278,11 @@
     ]
   },
   "EVAL015.JPG": {
-    "description": "A vibrant mountain pride (Penstemon newberryi) wildflower blooms from a granite crevice in Yosemite National Park, with Half Dome visible in the background.",
+    "description": "A vibrant mountain pride (Penstemon newberryi) wildflower blooms from a granite crevice in Yosemite National Park, with Half Dome visible in the background, from Olmsted Point.",
     "keywords": [
       "yosemite",
       "half dome",
+      "olmsted point",
       "california",
       "mountain pride",
       "penstemon newberryi",
@@ -376,6 +361,7 @@
       "wildflower",
       "red",
       "forest floor",
+      "taft point trail",
       "nature",
       "parasitic",
       "mycoheterotroph",
@@ -413,6 +399,8 @@
       "california",
       "mountains",
       "landscape",
+      "glacier point",
+      "yosemite national park",
       "wilderness",
       "trees",
       "forest",
@@ -424,11 +412,14 @@
     ]
   },
   "EVAL022.JPG": {
-    "description": "A likely pyrola-leaved buckwheat (*Eriogonum pyrolifolium*) plant with pink and white flower clusters grows in dry, rocky soil.",
+    "description": "A one-seeded pussy paws (Calyptridium monospermum) plant with pink and white flower clusters grows in dry, rocky soil.",
     "keywords": [
-      "eriogonum pyrolifolium",
-      "pyrola-leaved buckwheat",
+      "calyptridium monospermum",
+      "one-seeded pussy paws",
       "wildflower",
+      "glacier point",
+      "california",
+      "yosemite national park",
       "pink",
       "white",
       "blossom",
@@ -461,9 +452,11 @@
     ]
   },
   "EVAL024.JPG": {
-    "description": "A vintage steam locomotive, number 10, sits inside a wooden engine shed on a heritage railway track.",
+    "description": "A vintage steam locomotive, number 10, sits inside a wooden engine shed on a heritage railway track at Yosemite Mountain Sugar Pine Railroad.",
     "keywords": [
       "locomotive",
+      "yosemite mountain sugar pine railroad",
+      "fish camp",
       "steam engine",
       "train",
       "railway",
@@ -489,6 +482,8 @@
       "rodent",
       "mammal",
       "wildlife",
+      "fish camp",
+      "california",
       "nature",
       "forest",
       "log",
@@ -500,12 +495,15 @@
     ]
   },
   "EVAL026.JPG": {
-    "description": "Steam rises from the dark, greasy mechanical parts and pipes of a vintage steam engine.",
+    "description": "Steam rises from the dark, greasy mechanical parts and pipes of a vintage steam engine at Yosemite Mountain Sugar Pine Railroad.",
     "keywords": [
       "steam",
       "engine",
       "machinery",
       "mechanical",
+      "yosemite mountain sugar pine railroad",
+      "fish camp",
+      "california",
       "pipes",
       "vintage",
       "industrial",
@@ -539,7 +537,7 @@
     ]
   },
   "EVAL028.JPG": {
-    "description": "The peak of likely Mount Tamalpais is partially shrouded in low-lying clouds and fog under a blue sky.",
+    "description": "The peak of Mount Tamalpais is partially shrouded in low-lying clouds and fog under a blue sky.",
     "keywords": [
       "mountain",
       "peak",
@@ -559,7 +557,7 @@
     ]
   },
   "EVAL029.JPG": {
-    "description": "Several purple flowers of likely coyote mint (Monardella villosa) bloom amidst dry, golden grasses in a summer field.",
+    "description": "Several purple flowers of coyote mint (Monardella villosa) bloom amidst dry, golden grasses in a summer field.",
     "keywords": [
       "coyote mint",
       "monardella villosa",
@@ -567,6 +565,7 @@
       "purple",
       "bloom",
       "dry grass",
+      "marin county",
       "summer",
       "nature",
       "flora",
@@ -596,7 +595,7 @@
     ]
   },
   "EVAL031.JPG": {
-    "description": "Several likely snowy egrets (Egretta thula) are perched within the green foliage of a tree canopy.",
+    "description": "Several Snowy Egrets (Egretta thula) are perched within the green foliage of a tree canopy.",
     "keywords": [
       "snowy egret",
       "egretta thula",
@@ -615,13 +614,15 @@
     ]
   },
   "EVAL032.JPG": {
-    "description": "A snowy egret (Egretta thula), a great egret (Ardea alba), and a likely western gull (Larus occidentalis) gather near fishing nets on a wooden dock.",
+    "description": "A snowy egret (Egretta thula), a great egret (Ardea alba), and a western gull (Larus occidentalis) gather near fishing nets on a wooden dock.",
     "keywords": [
       "snowy egret",
       "egretta thula",
       "great egret",
       "ardea alba",
       "western gull",
+      "bait shop",
+      "loch lomond marina",
       "larus occidentalis",
       "dock",
       "pier",
@@ -634,7 +635,7 @@
     ]
   },
   "EVAL033.JPG": {
-    "description": "The Richmond-San Rafael Bridge spans the San Francisco Bay under an overcast sky, with cargo ships anchored nearby and a distant city skyline in muted tones.",
+    "description": "The Richmond-San Rafael Bridge spans the San Francisco Bay under an overcast sky, with oil tankers anchored nearby and the Oakland skyline in muted tones.",
     "keywords": [
       "richmond-san rafael bridge",
       "san francisco bay",
@@ -642,13 +643,15 @@
       "bridge",
       "cantilever bridge",
       "overcast",
+      "oakland",
+      "richmond refinery",
       "skyline",
-      "cargo ship",
+      "oil tanker",
       "bay area",
       "infrastructure",
       "hazy",
       "transportation",
-      "estuary"
+      "bay"
     ]
   },
   "EVAL034.JPG": {
@@ -660,6 +663,7 @@
       "marin headlands",
       "salesforce tower",
       "transamerica pyramid",
+      "tennessee valley",
       "hills",
       "landscape",
       "cityscape",
@@ -670,12 +674,13 @@
     ]
   },
   "EVAL035.JPG": {
-    "description": "A wild bobcat (Lynx rufus) walks along a grassy path overlooking a coastal landscape.",
+    "description": "A wild bobcat (Lynx rufus) with a bird in its mouth, walks along a grassy path overlooking Tennessee Beach.",
     "keywords": [
       "bobcat",
       "lynx rufus",
       "wildlife",
       "mammal",
+      "tennessee valley",
       "feline",
       "predator",
       "coastal",
@@ -696,8 +701,10 @@
       "las vegas",
       "nevada",
       "aerial",
+      "wing",
       "landmark",
       "architecture",
+      "palazzo",
       "emoji",
       "cityscape",
       "travel",
@@ -709,7 +716,7 @@
     ]
   },
   "EVAL037.JPG": {
-    "description": "A likely western gull (Larus occidentalis) scavenges on a crab carcass on a sandy beach near the ocean shoreline.",
+    "description": "A western gull (Larus occidentalis) scavenges on a crab carcass on a sandy beach near the ocean shoreline.",
     "keywords": [
       "western gull",
       "larus occidentalis",
@@ -745,10 +752,12 @@
     ]
   },
   "EVAL039.JPG": {
-    "description": "A likely black turnstone (Arenaria melanocephala) stands on algae-covered rocks in a tide pool area with ocean waves in the background.",
+    "description": "A Kildeer anda couple of Least Sandpipers stand on algae-covered rocks in a tide pool area with ocean waves in the background.",
     "keywords": [
-      "black turnstone",
-      "arenaria melanocephala",
+      "kildeer",
+      "charardrius vociferus",
+      "least sandpiper",
+      "calidris minutilla",
       "shorebird",
       "tide pool",
       "ocean",
@@ -783,12 +792,13 @@
     ]
   },
   "EVAL041.JPG": {
-    "description": "A street musician plays a Chapman Stick under a canopy tent during an outdoor performance.",
+    "description": "A street musician, Robert Culbertson, plays a Chapman Stick under a canopy tent during an outdoor performance.",
     "keywords": [
       "musician",
       "busking",
       "chapman stick",
       "street performer",
+      "robert culbertson",
       "outdoor",
       "performance",
       "instrument",

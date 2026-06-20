@@ -59,6 +59,7 @@ class OllamaProvider(AiProvider):
 
     def __init__(self) -> None:
         self._vision_capability_cache: dict[str, bool] = {}
+        self.last_usage: dict[str, Any] | None = None
 
     def ensure_vision_capable(self, model: str) -> None:
         """Validate that selected Ollama model includes vision capability."""
@@ -141,6 +142,7 @@ class OllamaProvider(AiProvider):
             payload["keep_alive"] = OLLAMA_KEEP_ALIVE
 
         response = self._ollama_chat(payload=payload, request_label=request_label)
+        self.last_usage = self._usage_from_response(response)
         try:
             return self._extract_message_content(response)
         except AiSuggestionEmptyResponseError:
@@ -155,7 +157,17 @@ class OllamaProvider(AiProvider):
                 self._to_text(response.get("done_reason")).strip() or "unknown",
             )
             retry_response = self._ollama_chat(payload=retry_payload, request_label=retry_label)
+            self.last_usage = self._usage_from_response(retry_response)
             return self._extract_message_content(retry_response)
+
+    def _usage_from_response(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Extract token/duration usage from an Ollama chat response (cost is always 0, local)."""
+        return {
+            "cost_usd": 0.0,
+            "prompt_tokens": self._int_or_none(response.get("prompt_eval_count")),
+            "completion_tokens": self._int_or_none(response.get("eval_count")),
+            "total_duration_ns": self._int_or_none(response.get("total_duration")),
+        }
 
     def _ollama_chat(self, *, payload: dict[str, Any], request_label: str = "") -> dict[str, Any]:
         """Execute one non-streaming chat request against local Ollama."""

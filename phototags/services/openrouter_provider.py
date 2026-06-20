@@ -51,6 +51,7 @@ class OpenRouterProvider(AiProvider):
 
     def __init__(self) -> None:
         self._vision_capability_cache: dict[str, bool] = {}
+        self.last_usage: dict[str, Any] | None = None
 
     def ensure_vision_capable(self, model: str) -> None:
         """Validate that selected OpenRouter model accepts image input."""
@@ -126,13 +127,25 @@ class OpenRouterProvider(AiProvider):
                 {"role": "user", "content": content},
             ],
             "temperature": 0.2,
+            "usage": {"include": True},
         }
         if not think:
             # Not all routed models support a reasoning toggle; harmless no-op when ignored.
             body["reasoning"] = {"effort": "none", "exclude": True}
 
         response = self._openrouter_chat(body=body, request_label=request_label)
+        self.last_usage = self._usage_from_response(response)
         return self._extract_message_content(response)
+
+    def _usage_from_response(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Extract token counts and live-priced cost from an OpenRouter response."""
+        usage = response.get("usage")
+        usage = usage if isinstance(usage, dict) else {}
+        return {
+            "cost_usd": usage.get("cost"),
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+        }
 
     def _openrouter_chat(self, *, body: dict[str, Any], request_label: str = "") -> dict[str, Any]:
         """Execute one chat completion request against the OpenRouter API."""
