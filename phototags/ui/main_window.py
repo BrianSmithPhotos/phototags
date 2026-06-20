@@ -21,6 +21,7 @@ from phototags.services.process_move_service import ProcessMoveService
 from phototags.services.reverse_geocode_service import ReverseGeocodeResult, ReverseGeocodeService
 from phototags.services.rename_service import RenameContext, RenameService
 from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
+from phototags.services.timeline_sync_service import TimelineSyncService
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
 from phototags.ui.widgets.source_panel import SourcePanel
@@ -30,6 +31,7 @@ from phototags.workers.exif_loader import ExifLoadSignals, ExifLoadTask
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 from phototags.workers.location_suggester import LocationSuggestSignals, LocationSuggestTask
 from phototags.workers.reverse_geocode_lookup import ReverseGeocodeSignals, ReverseGeocodeTask
+from phototags.workers.timeline_sync import TimelineSyncSignals, TimelineSyncTask
 from phototags.workers.ai_suggester import AiSuggestPayload, AiSuggestSignals, AiSuggestTask
 from phototags.workers.metadata_writer import (
     MetadataBatchSaveResult,
@@ -68,6 +70,8 @@ class MainWindow(QMainWindow):
         self._reverse_geocode_service = ReverseGeocodeService()
         self._rename_service = RenameService()
         self._timeline_location_service = TimelineLocationService()
+        self._timeline_sync_service = TimelineSyncService(local_path=self._timeline_location_service.timeline_path)
+        self._active_timeline_sync_job: tuple[TimelineSyncTask, TimelineSyncSignals] | None = None
         self._process_move_service = ProcessMoveService(
             metadata_write_service=self._metadata_write_service,
             rename_service=self._rename_service,
@@ -140,6 +144,7 @@ class MainWindow(QMainWindow):
         self.resize(1460, 900)
         self.setMinimumSize(1180, 720)
         self._build_ui(source_dir=source_dir)
+        self._start_timeline_sync()
 
     def _build_ui(self, source_dir: Path) -> None:
         root = QWidget()
@@ -195,6 +200,24 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(2, 3)
 
         layout.addWidget(splitter)
+
+    def _start_timeline_sync(self) -> None:
+        """Check Google Drive for a fresher Timeline.json export and copy it in if found."""
+        signals = TimelineSyncSignals()
+        signals.synced.connect(self._on_timeline_sync_finished)
+        signals.failed.connect(self._on_timeline_sync_failed)
+        task = TimelineSyncTask(service=self._timeline_sync_service, signals=signals)
+        self._active_timeline_sync_job = (task, signals)
+        self._location_pool.start(task)
+
+    def _on_timeline_sync_finished(self, copied: bool) -> None:
+        self._active_timeline_sync_job = None
+        if copied:
+            self.metadata_panel.set_gps_status("Timeline.json updated from Google Drive.")
+
+    def _on_timeline_sync_failed(self, error: str) -> None:
+        self._active_timeline_sync_job = None
+        self.metadata_panel.set_gps_status(f"Timeline.json sync from Google Drive failed: {error}", is_error=True)
 
     def _on_photo_selected(self, image_path: Path | None) -> None:
         """Start background preview loading for selected photo."""

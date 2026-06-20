@@ -148,6 +148,14 @@ Implementation note:
 - [x] Idempotent import/upsert by normalized record key.
 - [x] Import signature tracks source path + size + mtime; import row stores SHA-256.
 
+### Startup sync from Google Drive
+
+- [x] `TimelineSyncService` checks `~/Library/CloudStorage/GoogleDrive-*/My Drive/AI/Gps/Timeline.json` on
+  startup and copies it over the local `gps/Timeline.json` if it is newer (by mtime).
+- [x] Runs as a background `TimelineSyncTask` so app launch is never blocked.
+- [x] Optional override: `PHOTOTAGS_DRIVE_TIMELINE_PATH` (skips Drive auto-discovery).
+- [x] Result surfaced via the existing GPS status label (no copy / copied / error).
+
 ### Matching behavior
 
 - [x] Nearest timestamp lookup with strict `<= 30 minutes` window (tightened from 60; cached timeline data shows 98%+ of consecutive recent points are within 30 minutes of each other, so little real coverage is lost).
