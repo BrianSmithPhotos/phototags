@@ -231,6 +231,9 @@ Research/e.dng
 # Privacy-sensitive location data
 gps/Timeline*.json
 
+# Eval images (large binaries, kept local-only)
+eval/images/
+
 # Local SQLite caches
 *.sqlite
 *.sqlite-*
