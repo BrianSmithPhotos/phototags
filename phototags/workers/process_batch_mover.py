@@ -7,6 +7,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from phototags.services.auto_metadata import (
+    description_with_art_filter_note,
+    keywords_with_auto_tokens,
+    sooc_token_for,
+)
 from phototags.services.exif_service import ExifService, ExifToolReadError, ExifUiData
 from phototags.services.process_move_service import ProcessMoveError, ProcessMoveService
 from phototags.services.rename_service import RenameContext, RenameService
@@ -117,12 +122,14 @@ class ProcessBatchTask(QRunnable):
             gps_latitude = ui_data.gps_latitude
             gps_longitude = ui_data.gps_longitude
             gps_altitude = ui_data.gps_altitude
-        keywords_text = self._keywords_with_auto_tokens(
+        keywords_text = keywords_with_auto_tokens(
             keywords_source,
-            ui_data.art_filter_token,
-            ui_data.camera_model or ui_data.camera,
-            ui_data.lens_model or ui_data.lens_type,
+            art_filter_token=ui_data.art_filter_token,
+            camera_token=ui_data.camera_model or ui_data.camera,
+            lens_token=ui_data.lens_model or ui_data.lens_type,
+            sooc_token=sooc_token_for(image_path),
         )
+        description = description_with_art_filter_note(description, ui_data.art_filter_token)
 
         proposed_filename = self.rename_service.build_filename(
             RenameContext(
@@ -165,33 +172,3 @@ class ProcessBatchTask(QRunnable):
         """Read one file's EXIF and map it for downstream processing."""
         metadata = self.exif_service.read_full_metadata(image_path)
         return self.exif_service.map_for_ui(metadata)
-
-    def _keywords_with_auto_tokens(
-        self,
-        keywords_text: str,
-        art_filter_token: str,
-        camera_token: str,
-        lens_token: str,
-    ) -> str:
-        """Append auto tokens to comma-delimited keywords with de-duplication."""
-        keywords = self._parse_keywords(keywords_text)
-        auto_tokens = [art_filter_token.strip(), camera_token.strip(), lens_token.strip()]
-        merged = self._merge_keywords(keywords, [token for token in auto_tokens if token])
-        return ", ".join(merged)
-
-    def _parse_keywords(self, text: str) -> list[str]:
-        """Split comma/newline-delimited keywords into normalized list."""
-        values = [part.strip() for part in text.replace("\n", ",").split(",")]
-        return [value for value in values if value]
-
-    def _merge_keywords(self, existing: list[str], incoming: list[str]) -> list[str]:
-        """Merge keyword lists preserving order and removing case-insensitive duplicates."""
-        merged: list[str] = []
-        seen: set[str] = set()
-        for keyword in [*existing, *incoming]:
-            lowered = keyword.casefold()
-            if lowered in seen:
-                continue
-            seen.add(lowered)
-            merged.append(keyword)
-        return merged

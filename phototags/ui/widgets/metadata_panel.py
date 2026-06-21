@@ -20,7 +20,19 @@ from PySide6.QtWidgets import (
 )
 
 from phototags.services.ai_suggestion_service import RECOMMENDED_MODELS
-from phototags.ui.styles import ACCENT_CYAN, BROWN_TEXT, DARK_TEAL, ORANGE_PRIMARY, PANEL_BACKGROUND, SALMON_SECONDARY
+from phototags.ui.styles import (
+    ACCENT_CYAN,
+    ALTITUDE_UNRELIABLE_BG,
+    ALTITUDE_UNRELIABLE_TEXT,
+    BROWN_TEXT,
+    BUTTON_DISABLED_BG,
+    BUTTON_DISABLED_TEXT,
+    DARK_TEAL,
+    ERROR_TEXT,
+    ORANGE_PRIMARY,
+    PANEL_BACKGROUND,
+    SALMON_SECONDARY,
+)
 
 
 class MetadataPanel(QWidget):
@@ -29,8 +41,8 @@ class MetadataPanel(QWidget):
     TECHNICAL_WIDE_VALUE_WIDTH = 360
     TECHNICAL_VALUE_HEIGHT = 26
     PANEL_FIXED_WIDTH = TECHNICAL_WIDE_VALUE_WIDTH + 200
-    GPS_ALTITUDE_UNRELIABLE_COLOR = "#94867a"
-    GPS_ALTITUDE_UNRELIABLE_BACKGROUND = "#f4eee7"
+    GPS_ALTITUDE_UNRELIABLE_COLOR = ALTITUDE_UNRELIABLE_TEXT
+    GPS_ALTITUDE_UNRELIABLE_BACKGROUND = ALTITUDE_UNRELIABLE_BG
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -329,8 +341,8 @@ class MetadataPanel(QWidget):
                 font-weight: 600;
             }}
             QPushButton:disabled {{
-                background: #d7ccc6;
-                color: #f6f3f1;
+                background: {BUTTON_DISABLED_BG};
+                color: {BUTTON_DISABLED_TEXT};
             }}
             """
         )
@@ -494,19 +506,19 @@ class MetadataPanel(QWidget):
     def set_save_status(self, message: str, is_error: bool = False) -> None:
         """Set status line under metadata save actions."""
         self.save_status.setText(message)
-        color = "#c84d3a" if is_error else BROWN_TEXT
+        color = ERROR_TEXT if is_error else BROWN_TEXT
         self.save_status.setStyleSheet(f"color: {color}; font-size: 11px;")
 
     def set_ai_status(self, message: str, is_error: bool = False) -> None:
         """Set status line for AI suggestion actions."""
         self.ai_status.setText(message)
-        color = "#c84d3a" if is_error else BROWN_TEXT
+        color = ERROR_TEXT if is_error else BROWN_TEXT
         self.ai_status.setStyleSheet(f"color: {color}; font-size: 11px;")
 
     def set_gps_status(self, message: str, is_error: bool = False) -> None:
         """Set status line for GPS enrichment actions."""
         self.gps_status.setText(message)
-        color = "#c84d3a" if is_error else BROWN_TEXT
+        color = ERROR_TEXT if is_error else BROWN_TEXT
         self.gps_status.setStyleSheet(f"color: {color}; font-size: 11px;")
 
     def clear_gps_status(self) -> None:

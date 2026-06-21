@@ -18,7 +18,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from phototags.ui.styles import ACCENT_CYAN, BROWN_TEXT, DARK_TEAL, PANEL_BACKGROUND, SALMON_SECONDARY
+from phototags.ui.styles import (
+    ACCENT_CYAN,
+    BROWN_TEXT,
+    BUTTON_DISABLED_BG,
+    BUTTON_DISABLED_TEXT,
+    DARK_TEAL,
+    PANEL_BACKGROUND,
+    PREVIEW_BACKGROUND,
+    SALMON_SECONDARY,
+    VARIANT_BUTTON_BG,
+    VARIANT_BUTTON_BORDER,
+    VARIANT_BUTTON_CHECKED_BG,
+    VARIANT_BUTTON_CHECKED_TEXT,
+)
 
 
 class ImagePreviewWidget(QWidget):
@@ -145,7 +158,7 @@ class ImagePreviewWidget(QWidget):
                 color: {BROWN_TEXT};
                 border: 1px dashed {ACCENT_CYAN};
                 border-radius: 6px;
-                background: white;
+                background: {PREVIEW_BACKGROUND};
             }}
             QLabel#variantTitle {{
                 color: {DARK_TEAL};
@@ -157,17 +170,17 @@ class ImagePreviewWidget(QWidget):
                 font-size: 11px;
             }}
             QPushButton#variantButton {{
-                background: #efe8e2;
+                background: {VARIANT_BUTTON_BG};
                 color: {BROWN_TEXT};
-                border: 1px solid #d8cdc4;
+                border: 1px solid {VARIANT_BUTTON_BORDER};
                 border-radius: 6px;
                 padding: 2px;
                 font-weight: 500;
             }}
             QPushButton#variantButton:checked {{
-                background: #dff7f6;
+                background: {VARIANT_BUTTON_CHECKED_BG};
                 border: 1px solid {ACCENT_CYAN};
-                color: #2e4746;
+                color: {VARIANT_BUTTON_CHECKED_TEXT};
             }}
             QLabel, QSlider {{
                 color: {BROWN_TEXT};
@@ -181,8 +194,8 @@ class ImagePreviewWidget(QWidget):
                 font-weight: 600;
             }}
             QPushButton:disabled {{
-                background: #d7ccc6;
-                color: #f6f3f1;
+                background: {BUTTON_DISABLED_BG};
+                color: {BUTTON_DISABLED_TEXT};
             }}
             """
         )

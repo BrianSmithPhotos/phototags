@@ -7,6 +7,12 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from phototags.services.auto_metadata import (
+    description_with_art_filter_note,
+    keywords_with_auto_tokens,
+    parse_keywords,
+    sooc_token_for,
+)
 from phototags.services.exif_service import ExifService, ExifToolReadError, ExifUiData
 from phototags.services.metadata_write_service import (
     MetadataWriteResult,
@@ -159,12 +165,14 @@ class MetadataBatchSaveTask(QRunnable):
             gps_longitude = ui_data.gps_longitude
             gps_altitude = ui_data.gps_altitude
 
-        keywords_text = self._keywords_with_auto_tokens(
+        keywords_text = keywords_with_auto_tokens(
             keywords_source,
-            ui_data.art_filter_token,
-            ui_data.camera_model or ui_data.camera,
-            ui_data.lens_model or ui_data.lens_type,
+            art_filter_token=ui_data.art_filter_token,
+            camera_token=ui_data.camera_model or ui_data.camera,
+            lens_token=ui_data.lens_model or ui_data.lens_type,
+            sooc_token=sooc_token_for(image_path),
         )
+        description = description_with_art_filter_note(description, ui_data.art_filter_token)
 
         try:
             result = self.metadata_write_service.write_description_keywords(
@@ -179,7 +187,7 @@ class MetadataBatchSaveTask(QRunnable):
             return MetadataBatchItemOutcome(
                 image_path=str(image_path),
                 description=description,
-                keywords=self._parse_keywords(keywords_text),
+                keywords=parse_keywords(keywords_text),
                 error=str(exc),
             )
         return self._success_outcome(image_path=image_path, result=result)
@@ -202,33 +210,3 @@ class MetadataBatchSaveTask(QRunnable):
             keywords=list(result.keywords),
             error="",
         )
-
-    def _keywords_with_auto_tokens(
-        self,
-        keywords_text: str,
-        art_filter_token: str,
-        camera_token: str,
-        lens_token: str,
-    ) -> str:
-        """Append art/camera/lens tokens with case-insensitive de-duplication."""
-        keywords = self._parse_keywords(keywords_text)
-        auto_tokens = [art_filter_token.strip(), camera_token.strip(), lens_token.strip()]
-        merged = self._merge_keywords(keywords, [token for token in auto_tokens if token])
-        return ", ".join(merged)
-
-    def _parse_keywords(self, text: str) -> list[str]:
-        """Split comma/newline-delimited keywords into normalized list."""
-        values = [part.strip() for part in text.replace("\n", ",").split(",")]
-        return [value for value in values if value]
-
-    def _merge_keywords(self, existing: list[str], incoming: list[str]) -> list[str]:
-        """Merge keyword lists preserving order and removing case-insensitive duplicates."""
-        merged: list[str] = []
-        seen: set[str] = set()
-        for keyword in [*existing, *incoming]:
-            lowered = keyword.casefold()
-            if lowered in seen:
-                continue
-            seen.add(lowered)
-            merged.append(keyword)
-        return merged

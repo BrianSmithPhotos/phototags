@@ -22,6 +22,7 @@ from phototags.services.reverse_geocode_service import ReverseGeocodeResult, Rev
 from phototags.services.rename_service import RenameContext, RenameService
 from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
 from phototags.services.timeline_sync_service import TimelineSyncService
+from phototags.ui.styles import WINDOW_BACKGROUND
 from phototags.ui.widgets.image_preview_widget import ImagePreviewWidget
 from phototags.ui.widgets.metadata_panel import MetadataPanel
 from phototags.ui.widgets.source_panel import SourcePanel
@@ -149,6 +150,7 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self, source_dir: Path) -> None:
         root = QWidget()
+        root.setStyleSheet(f"background: {WINDOW_BACKGROUND};")
         self.setCentralWidget(root)
 
         layout = QHBoxLayout(root)

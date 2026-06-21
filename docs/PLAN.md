@@ -133,6 +133,16 @@ Implementation note:
   defaulting to `ollama:qwen3.6:35b`, pre-populated with `RECOMMENDED_MODELS`
   (`ai_suggestion_service.py`) ordered by the `eval/RESULTS.md` bake-off. Still
   accepts a typed `provider:model` override for anything not in the list.
+- [x] Auto-keyword/description rules, applied at save/process time only (not
+  live in the editable UI fields) via `phototags/services/auto_metadata.py`:
+  every JPEG gets a `sooc` (straight out of camera) keyword, and any file with
+  an in-camera art filter (EXIF `art_filter_token`, same source that already
+  powers renaming) gets `In camera effect <filter>.` appended to its
+  description. Single shared module used by both `MetadataBatchSaveTask`
+  (`metadata_writer.py`) and `ProcessBatchTask` (`process_batch_mover.py`) —
+  previously these two had independent, near-duplicate copies of the
+  keyword-merging logic; this consolidation fixed that while adding the new
+  rules, rather than adding a third copy.
 - [x] Vision capability pre-check before any suggestion request: Ollama via
   `/api/tags` capabilities list, OpenRouter via `/api/v1/models`
   `architecture.input_modalities` (see AI provider expansion below).
@@ -153,6 +163,22 @@ Implementation note:
   - Clearer user-facing failure path when content remains empty
 - [x] Capture-set apply robustness:
   - AI apply now expands to full capture set when grouping finishes after AI request starts
+
+### UI theming
+
+- [x] Dark mode option, restart-to-apply (not a live switch). `phototags/ui/
+  styles.py` exports a `Palette` dataclass with light/dark variants for every
+  color; the active palette is chosen once at module-import time from a
+  persisted `QSettings` preference (`ui/dark_mode`) and re-exported as the
+  same flat string constants every widget already imports, so no widget code
+  needed to change to consume the active theme — only a handful of previously
+  inline hex literals across `source_panel.py`/`metadata_panel.py`/
+  `image_preview_widget.py` were promoted to named constants so dark mode
+  could actually override them. Dark background is dark grey
+  (`PANEL_BACKGROUND`/`WINDOW_BACKGROUND`) per request; other colors are
+  lightened/brightened (not simply inverted) from their light-mode values for
+  WCAG-reasonable contrast. Toggle lives as a "Dark Mode" checkbox next to
+  "Stacked?" in the source panel.
 
 ## 3. Location Enrichment Completed
 

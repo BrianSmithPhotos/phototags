@@ -25,7 +25,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from phototags.ui.styles import ACCENT_CYAN, BROWN_TEXT, DARK_TEAL, PANEL_BACKGROUND
+from phototags.ui.styles import (
+    ACCENT_CYAN,
+    BROWN_TEXT,
+    DARK_TEAL,
+    PANEL_BACKGROUND,
+    THUMB_PLACEHOLDER_BG,
+    THUMB_PLACEHOLDER_BORDER,
+    TILE_BG_DEFAULT,
+    TILE_BG_SELECTED,
+    TILE_BORDER,
+    is_dark_mode_enabled,
+    set_dark_mode_enabled,
+)
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".orf"}
@@ -110,10 +122,10 @@ class ThumbnailTile(QFrame):
     def _apply_selected_style(self, selected: bool) -> None:
         if selected:
             border = ACCENT_CYAN
-            bg = "#eefcfb"
+            bg = TILE_BG_SELECTED
         else:
-            border = "#d6d2ce"
-            bg = "white"
+            border = TILE_BORDER
+            bg = TILE_BG_DEFAULT
 
         self.setStyleSheet(
             f"""
@@ -123,10 +135,10 @@ class ThumbnailTile(QFrame):
                 background: {bg};
             }}
             QLabel#thumbLabel {{
-                border: 1px solid #e8e4df;
+                border: 1px solid {THUMB_PLACEHOLDER_BORDER};
                 border-radius: 6px;
                 color: {BROWN_TEXT};
-                background: #f8f6f4;
+                background: {THUMB_PLACEHOLDER_BG};
                 font-size: 11px;
             }}
             QLabel#nameLabel {{
@@ -231,7 +243,16 @@ class SourcePanel(QWidget):
         self.stacked_checkbox.setChecked(True)
         self.stacked_checkbox.toggled.connect(self._on_stacked_toggled)
         count_row.addWidget(self.stacked_checkbox)
+
+        self.dark_mode_checkbox = QCheckBox("Dark Mode")
+        self.dark_mode_checkbox.setChecked(is_dark_mode_enabled())
+        self.dark_mode_checkbox.toggled.connect(self._on_dark_mode_toggled)
+        count_row.addWidget(self.dark_mode_checkbox)
         layout.addLayout(count_row)
+
+        self.dark_mode_hint = QLabel("")
+        self.dark_mode_hint.setObjectName("supportText")
+        layout.addWidget(self.dark_mode_hint)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -526,6 +547,11 @@ class SourcePanel(QWidget):
         self._stacked_enabled = checked
         self._apply_panel_max_width()
         self._relayout_grid()
+
+    def _on_dark_mode_toggled(self, checked: bool) -> None:
+        """Persist the dark-mode preference; styling itself only applies on next launch."""
+        set_dark_mode_enabled(checked)
+        self.dark_mode_hint.setText("Restart MacPhotoMaster to apply the new theme.")
 
     def _visible_paths(self) -> list[Path]:
         """Return paths to display given current stacked/grouping state."""
