@@ -111,10 +111,15 @@ Implementation note:
   details live behind an `AiProvider` interface (`ai_provider.py`), implemented by
   `OllamaProvider` (`ollama_provider.py`, the default) and `OpenRouterProvider`
   (`openrouter_provider.py`); see "AI provider expansion" below for provider
-  selection. Still open: a standalone model-comparison eval harness that calls
-  providers directly without going through Qt.
+  selection. Standalone model-comparison eval harness (`eval/run_candidates.py`,
+  `eval/run_judge.py`, `eval/summarize.py`) calls providers directly without
+  going through Qt — see `eval/RESULTS.md` for the 15-model bake-off this
+  produced.
 - [x] Group-aware AI apply (one pass on representative, apply editable drafts to all set members).
-- [x] Local model input field in UI.
+- [x] Model picker in UI: editable `QComboBox` (`MetadataPanel.ai_model_edit`),
+  defaulting to `ollama:qwen3.6:35b`, pre-populated with `RECOMMENDED_MODELS`
+  (`ai_suggestion_service.py`) ordered by the `eval/RESULTS.md` bake-off. Still
+  accepts a typed `provider:model` override for anything not in the list.
 - [x] Vision capability pre-check before any suggestion request: Ollama via
   `/api/tags` capabilities list, OpenRouter via `/api/v1/models`
   `architecture.input_modalities` (see AI provider expansion below).
@@ -259,10 +264,12 @@ Use this when importing a new full-history timeline export.
 
 ### AI model quality and specialization
 
-- [ ] Run a model bake-off on representative wildlife/plant/location samples:
-  - Precision for bird/flower/animal identification
-  - Scientific-name usefulness
-  - Response consistency and latency
+- [x] Run a model bake-off on representative wildlife/plant/location samples:
+  15 vision models (5 local Ollama, 10 OpenRouter) scored against hand-written
+  ground truth by an image-grounded LLM judge — see `eval/RESULTS.md` for the
+  full table, methodology, and findings (e.g. `gpt-5.5` reasoning by default
+  made it ~12x pricier than `gpt-5.1` for a lower score; local models trail the
+  strongest cloud models on both quality and speed for this task).
 - [ ] Compare at least one strong general vision model against one or more biology-focused/specialized candidates.
 - [ ] Define per-subject model recommendations (for example: default general model + optional specialist model for flora/fauna workflows).
 - [ ] Tune prompts for difficult bird/flower species and low-light scenes.
@@ -277,17 +284,16 @@ Use this when importing a new full-history timeline export.
   hint for models that don't support it).
 - [x] Provider selection via `PHOTOTAGS_AI_PROVIDER` env var (`ollama` default,
   `openrouter` to switch). `AiSuggestionService` picks the provider and its
-  matching default model (`DEFAULT_PROVIDER_MODEL`) at import time; no UI change
-  needed since the existing model field is already free text.
+  matching default model (`DEFAULT_PROVIDER_MODEL`) at import time. The model
+  dropdown (see "AI metadata suggestions" above) already lists models with
+  explicit provider prefixes, so it works the same regardless of this env var.
   Optional override: `PHOTOTAGS_OPENROUTER_MODEL` (default
-  `google/gemini-2.5-flash` — cheap/fast, large context, vision-capable). For
-  stronger species/landmark identification, set the model field (or
-  `PHOTOTAGS_OPENROUTER_MODEL`) to `anthropic/claude-sonnet-4.6` or
-  `google/gemini-3.1-pro-preview`.
-- [x] Per-request provider override via model-field prefix: typing
-  `openrouter:<model>` or `ollama:<model>` in the existing model text field routes
-  that one request to the named provider regardless of `PHOTOTAGS_AI_PROVIDER`,
-  stripping the prefix before it reaches the provider. No prefix falls back to the
+  `google/gemini-2.5-flash` — cheap/fast, large context, vision-capable, and
+  the #2 pinned entry in the model dropdown based on `eval/RESULTS.md`).
+- [x] Per-request provider override via model-field prefix: typing or selecting
+  `openrouter:<model>` or `ollama:<model>` in the model dropdown routes that one
+  request to the named provider regardless of `PHOTOTAGS_AI_PROVIDER`, stripping
+  the prefix before it reaches the provider. No prefix falls back to the
   env-var-selected default provider. Provider instances are created lazily per
   prefix and reused (`AiSuggestionService._resolve_provider_and_model`).
 - [ ] Build a standalone eval harness script (not part of the app) that runs a set

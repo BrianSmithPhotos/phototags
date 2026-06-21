@@ -33,12 +33,36 @@ __all__ = [
     "OLLAMA_DEFAULT_MODEL",
     "OPENROUTER_DEFAULT_MODEL",
     "DEFAULT_PROVIDER_MODEL",
+    "RECOMMENDED_MODELS",
 ]
 
-# Provider selection is an env var, not a UI control: the model field is already
-# free text, and a typed model id only makes sense for whichever provider is active.
+# Provider selection is an env var, not a UI control: the model dropdown lists
+# specific models with explicit provider prefixes, so it works the same regardless
+# of which provider PHOTOTAGS_AI_PROVIDER selects.
 _PROVIDER_NAME = os.getenv("PHOTOTAGS_AI_PROVIDER", "ollama").strip().casefold()
 DEFAULT_PROVIDER_MODEL = OPENROUTER_DEFAULT_MODEL if _PROVIDER_NAME == "openrouter" else OLLAMA_DEFAULT_MODEL
+
+# Curated model list for the UI dropdown, ordered by the eval/RESULTS.md bake-off:
+# qwen3.6:35b (free/local default), gemini-2.5-flash (cheap/fast cloud default),
+# gpt-5.1 (stronger cloud option) are pinned first regardless of exact accuracy
+# rank, then every other eval-tested model follows in descending accuracy order.
+RECOMMENDED_MODELS: list[str] = [
+    "ollama:qwen3.6:35b",
+    "openrouter:google/gemini-2.5-flash",
+    "openrouter:openai/gpt-5.1",
+    "openrouter:google/gemini-3.5-flash",
+    "openrouter:google/gemini-2.5-pro",
+    "openrouter:anthropic/claude-opus-4.6",
+    "openrouter:openai/gpt-5.5",
+    "ollama:qwen2.5vl:72b",
+    "openrouter:qwen/qwen2.5-vl-72b-instruct",
+    "openrouter:openai/gpt-4o-mini",
+    "openrouter:anthropic/claude-sonnet-4.5",
+    "ollama:qwen3.5:latest",
+    "openrouter:mistralai/mistral-medium-3-5",
+    "ollama:gemma4:12b",
+    "ollama:moondream:latest",
+]
 
 
 def _default_provider() -> AiProvider:

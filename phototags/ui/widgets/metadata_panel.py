@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from phototags.services.ai_suggestion_service import RECOMMENDED_MODELS
 from phototags.ui.styles import ACCENT_CYAN, BROWN_TEXT, DARK_TEAL, ORANGE_PRIMARY, PANEL_BACKGROUND, SALMON_SECONDARY
 
 
@@ -75,10 +77,9 @@ class MetadataPanel(QWidget):
         ai_heading.setObjectName("subHeading")
         layout.addWidget(ai_heading)
 
-        self.ai_model_edit = QLineEdit()
-        self.ai_model_edit.setPlaceholderText(
-            "Model (e.g. gemma4:26b-mlx, or openrouter:google/gemini-2.5-flash)"
-        )
+        self.ai_model_edit = QComboBox()
+        self.ai_model_edit.setEditable(True)
+        self.ai_model_edit.addItems(RECOMMENDED_MODELS)
         layout.addWidget(self.ai_model_edit)
 
         self.suggest_button = QPushButton("Suggest Description + Keywords")
@@ -479,12 +480,12 @@ class MetadataPanel(QWidget):
         self.lookup_altitude_button.setEnabled(enabled)
 
     def ai_model_name(self) -> str:
-        """Return current Ollama model name from AI settings."""
-        return self.ai_model_edit.text().strip()
+        """Return current AI model name from the model dropdown/free-text entry."""
+        return self.ai_model_edit.currentText().strip()
 
     def set_ai_model_name(self, model_name: str) -> None:
-        """Set Ollama model name in AI settings input."""
-        self.ai_model_edit.setText(model_name.strip())
+        """Set AI model name in the model dropdown/free-text entry."""
+        self.ai_model_edit.setCurrentText(model_name.strip())
 
     def set_save_status(self, message: str, is_error: bool = False) -> None:
         """Set status line under metadata save actions."""
