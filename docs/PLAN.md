@@ -40,6 +40,13 @@ This document is the active implementation snapshot + next-step checklist.
   recomputes on "Stacked?" toggle. Also fixes a flash of the 2-column grid before
   capture-set grouping resolves, since column count now depends only on the
   "Stacked?" state, not on whether grouping data has arrived yet.
+- [x] Default source folder at startup (`phototags/app.py`,
+  `detect_default_source_dir`): scans the mounted OM System SD card's
+  `DCIM/` for the lowest-numbered `<NNN>OMSYS` folder (e.g. `105OMSYS`) —
+  cameras roll over to a new one every 10,000 images, and on the rare
+  occasion two coexist the lower number is the one still being imported
+  from. Falls back to `/Volumes` (browsable, not auto-populated) when no SD
+  card with that structure is mounted.
 
 ### Part 3 - EXIF read and mapping
 

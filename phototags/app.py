@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
@@ -18,13 +19,42 @@ DEFAULT_SOURCE_CANDIDATES: tuple[Path, ...] = (
     Path("/volumes/OM System"),
 )
 
+FALLBACK_SOURCE_DIR = Path("/Volumes")
+
+# Olympus/OM System cameras roll over to a new DCIM subfolder named
+# "<3-digit-number>OMSYS" every 10,000 images (e.g. "105OMSYS"). Two such
+# folders rarely coexist, but when they do the lower-numbered one is the
+# one still being imported from.
+_OMSYS_FOLDER_PATTERN = re.compile(r"^(\d{3})OMSYS$", re.IGNORECASE)
+
+
+def _lowest_numbered_omsys_dir(sd_card_root: Path) -> Path | None:
+    """Return the lowest-numbered DCIM/<NNN>OMSYS folder under an SD card root."""
+    dcim_dir = sd_card_root / "DCIM"
+    if not dcim_dir.is_dir():
+        return None
+    numbered_dirs: list[tuple[int, Path]] = []
+    try:
+        for entry in dcim_dir.iterdir():
+            match = _OMSYS_FOLDER_PATTERN.match(entry.name) if entry.is_dir() else None
+            if match is not None:
+                numbered_dirs.append((int(match.group(1)), entry))
+    except OSError:
+        return None
+    if not numbered_dirs:
+        return None
+    return min(numbered_dirs, key=lambda item: item[0])[1]
+
 
 def detect_default_source_dir() -> Path:
-    """Return best available default SD card source path."""
-    for candidate in DEFAULT_SOURCE_CANDIDATES:
-        if candidate.exists():
-            return candidate
-    return DEFAULT_SOURCE_CANDIDATES[0]
+    """Return the active DCIM/<NNN>OMSYS folder on a mounted SD card, else /Volumes."""
+    for candidate_root in DEFAULT_SOURCE_CANDIDATES:
+        if not candidate_root.exists():
+            continue
+        omsys_dir = _lowest_numbered_omsys_dir(candidate_root)
+        if omsys_dir is not None:
+            return omsys_dir
+    return FALLBACK_SOURCE_DIR
 
 
 def build_parser() -> ArgumentParser:
