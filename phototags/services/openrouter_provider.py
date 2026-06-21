@@ -141,10 +141,13 @@ class OpenRouterProvider(AiProvider):
         """Extract token counts and live-priced cost from an OpenRouter response."""
         usage = response.get("usage")
         usage = usage if isinstance(usage, dict) else {}
+        completion_details = usage.get("completion_tokens_details")
+        completion_details = completion_details if isinstance(completion_details, dict) else {}
         return {
             "cost_usd": usage.get("cost"),
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": completion_details.get("reasoning_tokens"),
         }
 
     def _openrouter_chat(self, *, body: dict[str, Any], request_label: str = "") -> dict[str, Any]:

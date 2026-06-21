@@ -44,6 +44,21 @@ not signal — don't read too much into small rank swaps near each other.
   OpenAI's newer flagship, it scored lower on both accuracy and completeness,
   cost ~12x more ($1.05 vs $0.09 for 41 images), and took ~4x longer (487s vs
   117s). `gpt-5.1` remains the better OpenAI candidate here.
+  - **Why it's so much pricier**: `gpt-5.5` reasons by default on every call.
+    A direct test (asking it "what is 2+2?") showed `completion_tokens_details
+    .reasoning_tokens: 9` out of 16 total completion tokens even for a trivial
+    prompt. Averaged across the 41 images, `gpt-5.5` used 384 completion
+    tokens/image vs. `gpt-5.1`'s 91 — and completion tokens bill at the
+    priciest rate ($30/M for `gpt-5.5` vs $10/M for `gpt-5.1`). The harness's
+    `think=False` flag only applies on timeout/empty-response retries (see
+    `ai_suggestion_service.py`), not primary calls, so every `gpt-5.5` request
+    paid full reasoning cost. (`gpt-5.5`'s prompt tokens were also ~3x higher
+    than `gpt-5.1`'s for the same image — likely different image tiling —
+    so reasoning isn't the only driver, but it's the larger one.)
+    `OpenRouterProvider.last_usage` now also captures `reasoning_tokens`
+    (from `usage.completion_tokens_details.reasoning_tokens`) for future runs,
+    so this breakdown is visible in `eval/results/<model>.json` going forward
+    without needing an ad-hoc check.
 - **Production default holds up**: `gemini-2.5-flash` (current OpenRouter
   default) is mid-pack but by far the best cost/speed tradeoff — far cheaper
   than every model that beats it on score, for only modestly lower accuracy.

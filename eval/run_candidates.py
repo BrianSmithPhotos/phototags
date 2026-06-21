@@ -67,6 +67,7 @@ def run_model(service: AiSuggestionService, model: str, image_paths: list[Path])
                 "cost_usd": None,
                 "prompt_tokens": None,
                 "completion_tokens": None,
+                "reasoning_tokens": None,
                 "error": str(exc),
             }
             continue
@@ -81,6 +82,7 @@ def run_model(service: AiSuggestionService, model: str, image_paths: list[Path])
             "cost_usd": usage.get("cost_usd"),
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": usage.get("reasoning_tokens"),
             "error": None,
         }
         print(f"  ok ({elapsed:.1f}s): {image_path.name}: {result.description}")
