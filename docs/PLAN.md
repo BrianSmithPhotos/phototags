@@ -119,13 +119,16 @@ Implementation note:
 - [x] Manual multi-select in the left thumbnail nav (`SourcePanel`): cmd-click
   toggles a tile in/out of selection, shift-click selects a contiguous range,
   plain click resets to single-select. When 2+ tiles are manually selected,
-  "Suggest Description + Keywords" and "Save Capture Set" (relabeled
-  "Save Selected (N)") act on exactly that set instead of the automatic
-  1-second capture group — useful for bursts shot seconds apart from the same
-  spot that the timestamp-based grouping doesn't merge. GPS/altitude apply and
-  skip-set remain capture-group-only; `AiSuggestPayload.expand_to_group=False`
-  is what stops a manual selection from being silently re-expanded to a
-  representative's capture-group siblings on AI apply.
+  "Suggest Description + Keywords", "Save Capture Set" (relabeled
+  "Save Selected (N)"), and GPS/altitude apply (`_gps_target_paths`) all act on
+  exactly that set instead of the automatic 1-second capture group — useful
+  for bursts shot seconds apart from the same spot that the timestamp-based
+  grouping doesn't merge. `AiSuggestPayload.expand_to_group=False` is what
+  stops a manual selection from being silently re-expanded to a
+  representative's capture-group siblings on AI apply. GPS/altitude apply
+  already skips any file with its own embedded GPS/altitude per-file, so it's
+  safe even across a manual selection spanning different locations. Skip-set
+  remains capture-group-only.
 - [x] Model picker in UI: editable `QComboBox` (`MetadataPanel.ai_model_edit`),
   defaulting to `ollama:qwen3.6:35b`, pre-populated with `RECOMMENDED_MODELS`
   (`ai_suggestion_service.py`) ordered by the `eval/RESULTS.md` bake-off. Still

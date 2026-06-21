@@ -1448,7 +1448,17 @@ class MainWindow(QMainWindow):
         return group.representative_path, tuple(group.members)
 
     def _gps_target_paths(self, selected_path: Path) -> tuple[Path, ...]:
-        """Return capture-set members for GPS/altitude apply actions."""
+        """Return capture-set members for GPS/altitude apply actions.
+
+        A manual multi-selection (cmd-click/shift-click in the left nav) takes
+        priority over capture-group membership when active, same as
+        `_ai_targets_for`. Per-file embedded-GPS/altitude checks in the callers
+        (`_on_gps_apply_clicked`, altitude lookup) already skip any file that
+        has its own real GPS, so this is safe even across files that may span
+        different locations.
+        """
+        if self._is_manual_multi_target(selected_path):
+            return self._multi_selected_paths
         group = self._group_by_path.get(selected_path)
         if group is None:
             return (selected_path,)
