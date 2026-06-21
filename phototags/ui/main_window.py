@@ -129,6 +129,7 @@ class MainWindow(QMainWindow):
         self._save_inflight = False
         self._process_inflight = False
         self._selected_image_path: Path | None = None
+        self._multi_selected_paths: tuple[Path, ...] = ()
         self._current_exif_ui_data: ExifUiData | None = None
         self._metadata_drafts: dict[Path, MetadataDraft] = {}
         self._gps_suggestions: dict[Path, GpsSuggestion] = {}
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow):
         self.metadata_panel = MetadataPanel()
         self.source_panel.folder_selected.connect(self._on_folder_selected)
         self.source_panel.photo_selected.connect(self._on_photo_selected)
+        self.source_panel.selection_changed.connect(self._on_selection_changed)
         self.source_panel.thumbnail_loaded.connect(self._on_thumbnail_loaded)
         self.preview_panel.variant_selected.connect(self._on_variant_selected)
         self.metadata_panel.save_single_button.clicked.connect(self._on_save_single_clicked)
@@ -265,6 +267,17 @@ class MainWindow(QMainWindow):
         self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status("")
         self._update_rename_preview()
+
+    def _on_selection_changed(self, paths: tuple[Path, ...]) -> None:
+        """Track the left nav's manual multi-selection (cmd-click/shift-click)."""
+        self._multi_selected_paths = paths
+        is_manual = len(paths) > 1
+        label = f"Save Selected ({len(paths)})" if is_manual else "Save Capture Set"
+        self.metadata_panel.set_save_set_button_label(label)
+
+    def _is_manual_multi_target(self, selected_path: Path) -> bool:
+        """Return True when a manual multi-selection (not capture grouping) is active for this path."""
+        return len(self._multi_selected_paths) > 1 and selected_path in self._multi_selected_paths
 
     def _non_representative_paths_for_current_groups(self) -> set[Path]:
         """Compute which currently-visible files are non-representative capture-set members.
@@ -550,10 +563,14 @@ class MainWindow(QMainWindow):
         self._start_save_scope("single image", [selected])
 
     def _on_save_set_clicked(self) -> None:
-        """Persist description + keywords for all files in selected capture set."""
+        """Persist description + keywords for the active capture set or manual selection."""
         selected = self._selected_image_path
         if selected is None:
             self.metadata_panel.set_save_status("No file selected", is_error=True)
+            return
+        if self._is_manual_multi_target(selected):
+            paths = list(self._multi_selected_paths)
+            self._start_save_scope(f"{len(paths)} selected images", paths)
             return
         group = self._group_by_path.get(selected)
         paths = list(group.members) if group is not None else [selected]
@@ -767,6 +784,7 @@ class MainWindow(QMainWindow):
             ai_service=self._ai_suggestion_service,
             exif_service=self._exif_service,
             signals=signals,
+            expand_to_group=not self._is_manual_multi_target(selected_path),
         )
         self._active_ai_jobs[job_id] = (task, signals)
         self._ai_pool.start(task)
@@ -861,8 +879,15 @@ class MainWindow(QMainWindow):
         )
 
     def _ai_apply_paths_from_payload(self, payload: AiSuggestPayload) -> tuple[tuple[Path, ...], bool]:
-        """Return AI apply paths, expanding to current capture group when available."""
+        """Return AI apply paths, expanding to current capture group when available.
+
+        Skips capture-group expansion when the request came from a manual
+        multi-selection (`payload.expand_to_group` is False) — otherwise AI
+        results would leak onto capture-group siblings the user didn't select.
+        """
         payload_paths = [Path(path_text) for path_text in payload.target_paths]
+        if not payload.expand_to_group:
+            return tuple(self._dedupe_paths(payload_paths)), False
         representative = Path(payload.representative_path)
         group = self._group_by_path.get(representative)
         if group is None:
@@ -1410,7 +1435,13 @@ class MainWindow(QMainWindow):
         )
 
     def _ai_targets_for(self, selected_path: Path) -> tuple[Path, tuple[Path, ...]]:
-        """Return representative and member list for AI apply scope."""
+        """Return representative and member list for AI apply scope.
+
+        A manual multi-selection (cmd-click/shift-click in the left nav) takes
+        priority over capture-group membership when active.
+        """
+        if self._is_manual_multi_target(selected_path):
+            return selected_path, self._multi_selected_paths
         group = self._group_by_path.get(selected_path)
         if group is None:
             return selected_path, (selected_path,)

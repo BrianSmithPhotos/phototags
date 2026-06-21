@@ -453,6 +453,10 @@ class MetadataPanel(QWidget):
         self.save_single_button.setEnabled(enabled)
         self.save_set_button.setEnabled(enabled)
 
+    def set_save_set_button_label(self, label: str) -> None:
+        """Update the capture-set save button's label (e.g. to reflect manual multi-selection)."""
+        self.save_set_button.setText(label)
+
     def set_save_button_enabled(self, enabled: bool) -> None:
         """Backward-compatible wrapper for save button state."""
         self.set_save_buttons_enabled(enabled)

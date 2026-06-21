@@ -26,6 +26,7 @@ class AiSuggestPayload:
     art_filter_by_path: dict[str, str]
     camera_by_path: dict[str, str]
     lens_by_path: dict[str, str]
+    expand_to_group: bool = True
 
 
 class AiSuggestSignals(QObject):
@@ -52,6 +53,7 @@ class AiSuggestTask(QRunnable):
         ai_service: AiSuggestionService,
         exif_service: ExifService,
         signals: AiSuggestSignals,
+        expand_to_group: bool = True,
     ) -> None:
         super().__init__()
         self.representative_path = representative_path
@@ -65,6 +67,7 @@ class AiSuggestTask(QRunnable):
         self.ai_service = ai_service
         self.exif_service = exif_service
         self.signals = signals
+        self.expand_to_group = expand_to_group
 
     def run(self) -> None:
         """Run AI inference and emit success/failure."""
@@ -112,6 +115,7 @@ class AiSuggestTask(QRunnable):
                 art_filter_by_path=art_filter_by_path,
                 camera_by_path=camera_by_path,
                 lens_by_path=lens_by_path,
+                expand_to_group=self.expand_to_group,
             )
             self.signals.suggested.emit(payload)
         except (OSError, ValueError, AiSuggestionError, RuntimeError) as exc:

@@ -6,7 +6,7 @@ from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QDir, QFileInfo, QThreadPool, Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -41,7 +41,7 @@ PANEL_FRAME_BORDER = 1
 class ThumbnailTile(QFrame):
     """Single thumbnail tile in the source grid."""
 
-    clicked = Signal(object)
+    clicked = Signal(object, object)
 
     def __init__(self, image_path: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -73,9 +73,9 @@ class ThumbnailTile(QFrame):
 
         self._apply_selected_style(selected=False)
 
-    def mousePressEvent(self, event: object) -> None:  # noqa: N802
-        """Emit selected image path when tile is clicked."""
-        self.clicked.emit(self.image_path)
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Emit selected image path and click modifiers when tile is clicked."""
+        self.clicked.emit(self.image_path, event.modifiers())
         super().mousePressEvent(event)
 
     def set_thumbnail(self, pixmap: QPixmap) -> None:
@@ -143,6 +143,7 @@ class SourcePanel(QWidget):
     photo_selected = Signal(object)
     folder_selected = Signal(object)
     thumbnail_loaded = Signal(object)
+    selection_changed = Signal(object)
 
     def __init__(
         self,
@@ -157,6 +158,8 @@ class SourcePanel(QWidget):
         self._thumb_job_id = 0
         self._thumb_tiles: dict[str, ThumbnailTile] = {}
         self._selected_path: Path | None = None
+        self._multi_selected_paths: set[Path] = set()
+        self._range_anchor_path: Path | None = None
         self._current_folder: Path = source_dir
         self._current_image_paths: list[Path] = []
         self._group_sizes: dict[Path, int] = {}
@@ -318,6 +321,8 @@ class SourcePanel(QWidget):
         self._thumb_request_id += 1
         request_id = self._thumb_request_id
         self._selected_path = None
+        self._multi_selected_paths = set()
+        self._range_anchor_path = None
         self._thumb_tiles.clear()
         self._group_sizes = {}
         self._thumbnail_pixmaps = {}
@@ -431,17 +436,70 @@ class SourcePanel(QWidget):
         extension = QFileInfo(image_path).suffix().upper() or "IMG"
         tile.set_placeholder_text(extension)
 
-    def _on_tile_clicked(self, image_path: Path) -> None:
-        """Set active tile and emit selected image path."""
-        self._set_selected_path(image_path)
+    def _on_tile_clicked(self, image_path: Path, modifiers: Qt.KeyboardModifier) -> None:
+        """Update selection per click modifiers, then emit selection signals.
+
+        Cmd-click (Qt auto-maps this to ControlModifier on macOS) toggles one tile
+        in/out of the multi-selection. Shift-click selects the contiguous range
+        between the last click and this one. A plain click resets to single-select.
+        """
+        is_cmd = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        is_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+
+        if is_shift and self._range_anchor_path is not None:
+            self._multi_selected_paths = self._range_between(self._range_anchor_path, image_path)
+        elif is_cmd:
+            if image_path in self._multi_selected_paths:
+                self._multi_selected_paths.discard(image_path)
+            else:
+                self._multi_selected_paths.add(image_path)
+            self._range_anchor_path = image_path
+        else:
+            self._multi_selected_paths = {image_path}
+            self._range_anchor_path = image_path
+
+        self._selected_path = image_path
+        self._apply_multi_selection_style()
+        self._update_file_count_label()
         self.photo_selected.emit(image_path)
+        self.selection_changed.emit(self._ordered_selection())
+
+    def _range_between(self, anchor_path: Path, image_path: Path) -> set[Path]:
+        """Return the contiguous set of visible paths between anchor and image_path."""
+        visible_paths = self._visible_paths()
+        if anchor_path not in visible_paths or image_path not in visible_paths:
+            return {image_path}
+        start = visible_paths.index(anchor_path)
+        end = visible_paths.index(image_path)
+        low, high = min(start, end), max(start, end)
+        return set(visible_paths[low : high + 1])
+
+    def _ordered_selection(self) -> tuple[Path, ...]:
+        """Return the current multi-selection in on-screen display order."""
+        return tuple(path for path in self._current_image_paths if path in self._multi_selected_paths)
+
+    def _apply_multi_selection_style(self) -> None:
+        """Restyle every tile to reflect current multi-selection membership."""
+        for path_text, tile in self._thumb_tiles.items():
+            tile.set_selected(Path(path_text) in self._multi_selected_paths)
+
+    def _update_file_count_label(self) -> None:
+        """Refresh the file count label, appending a multi-selection hint when active."""
+        count = len(self._current_image_paths)
+        base = f"{count} files in {self._current_folder.name}"
+        selected_count = len(self._multi_selected_paths)
+        if selected_count > 1:
+            base += f" — {selected_count} selected"
+        self.file_count_label.setText(base)
 
     def _set_selected_path(self, image_path: Path) -> None:
-        """Update tile selection state and store active path."""
+        """Set a single active path programmatically, collapsing any multi-selection."""
         self._selected_path = image_path
-        selected = str(image_path)
-        for path_text, tile in self._thumb_tiles.items():
-            tile.set_selected(path_text == selected)
+        self._multi_selected_paths = {image_path}
+        self._range_anchor_path = image_path
+        self._apply_multi_selection_style()
+        self._update_file_count_label()
+        self.selection_changed.emit(self._ordered_selection())
 
     def _finish_thumb_job(self, job_id: int) -> None:
         """Release references for completed thumbnail tasks."""
@@ -556,11 +614,12 @@ class SourcePanel(QWidget):
             self._thumbnail_pixmaps.pop(Path(key), None)
             self._group_sizes.pop(Path(key), None)
 
-        self.file_count_label.setText(
-            f"{len(self._current_image_paths)} files in {self._current_folder.name}"
-        )
-
-        self._non_representative_paths -= {Path(key) for key in removed_keys}
+        removed_paths = {Path(key) for key in removed_keys}
+        self._multi_selected_paths -= removed_paths
+        if self._range_anchor_path in removed_paths:
+            self._range_anchor_path = None
+        self._non_representative_paths -= removed_paths
+        self._update_file_count_label()
 
         if not self._current_image_paths:
             self._clear_grid()
@@ -568,15 +627,20 @@ class SourcePanel(QWidget):
             empty.setObjectName("supportText")
             self.thumb_grid.addWidget(empty, 0, 0)
             self._selected_path = None
+            self._multi_selected_paths = set()
+            self._range_anchor_path = None
             self.photo_selected.emit(None)
             return
 
         self._relayout_grid()
+        self._apply_multi_selection_style()
 
         if was_selected:
             next_path = self._current_image_paths[0]
             self._set_selected_path(next_path)
             self.photo_selected.emit(next_path)
+        else:
+            self.selection_changed.emit(self._ordered_selection())
 
     def reload_current_folder(self) -> None:
         """Reload thumbnails for the current folder path."""
