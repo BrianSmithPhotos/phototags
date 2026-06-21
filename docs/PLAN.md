@@ -1,6 +1,6 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-19
+Last updated: 2026-06-21
 
 This document is the active implementation snapshot + next-step checklist.
 
@@ -342,14 +342,11 @@ Use this when importing a new full-history timeline export.
   the prefix before it reaches the provider. No prefix falls back to the
   env-var-selected default provider. Provider instances are created lazily per
   prefix and reused (`AiSuggestionService._resolve_provider_and_model`).
-- [ ] Build a standalone eval harness script (not part of the app) that runs a set
-  of sample images + expected-keyword answers through the `AiProvider` interface
-  to compare models/providers (keyword-overlap scoring, not LLM-graded).
 
 ### Integration stretch goals
 
-- [ ] Investigate practical DxO PhotoLab integration path.
-- [ ] Define Flickr upload pipeline and metadata mapping.
+- Flickr upload pipeline and metadata mapping is being handled in a separate
+  project, not here. Not tracked as a phototags backlog item.
 
 ## 7. Working Assumptions
 

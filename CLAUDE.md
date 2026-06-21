@@ -42,9 +42,11 @@ existing class.
 
 AI suggestions follow a provider pattern: `ai_suggestion_service.py` owns prompting, response
 parsing, and crop-refinement logic and is backend-agnostic. The actual backend implements the
-`AiProvider` interface in `ai_provider.py` — `OllamaProvider` (`ollama_provider.py`) is the only
-implementation today. Adding a new backend (e.g. OpenRouter) means writing one new `AiProvider`
-implementation, not touching `ai_suggestion_service.py`.
+`AiProvider` interface in `ai_provider.py` — `OllamaProvider` (`ollama_provider.py`) and
+`OpenRouterProvider` (`openrouter_provider.py`) are the two implementations today, selected via the
+model dropdown's `ollama:`/`openrouter:` prefix (see `RECOMMENDED_MODELS` in
+`ai_suggestion_service.py`, ordered by the `eval/RESULTS.md` model bake-off). Adding another
+backend means writing one new `AiProvider` implementation, not touching `ai_suggestion_service.py`.
 
 ## Coding Style
 
@@ -66,14 +68,25 @@ implementation, not touching `ai_suggestion_service.py`.
 
 - `gps/Timeline*.json` and `*.sqlite*` are gitignored — never remove that ignore or commit timeline
   exports or the location cache.
-- This repo's root contains a `.env` with API keys for unrelated tooling (LangSmith, SendGrid, etc.)
-  — it is gitignored and not part of this project. Don't read from or write secrets into it for
-  phototags work.
+- This repo's root contains a `.env` with API keys for mostly-unrelated tooling (LangSmith, SendGrid,
+  etc.); it is gitignored. phototags itself does not auto-load `.env` — `OPENROUTER_API_KEY` must be
+  exported into the process environment for `OpenRouterProvider` to work (in practice this often
+  means `set -a && source .env && set +a` before running the app/eval scripts, since that key
+  happens to live in this same file). Don't add new phototags-specific secrets into this file; it's
+  shared with unrelated tooling.
 
 ## Color Scheme
 
+Light mode (default):
 - Accent Cyan: `#20d6d3` — accent lines, highlights
 - Orange Primary: `#d68220` — links, key sections
 - Salmon Secondary: `#d6755f` — submit buttons, important actions
 - Dark Teal: `#385756` — main headings
 - Brown Text: `#574938` — supporting text, labels
+
+A dark mode option also exists (`phototags/ui/styles.py`'s `Palette`
+dataclass, toggled via the "Dark Mode" checkbox in the source panel,
+restart-to-apply). When adding any new color to a widget's stylesheet,
+add it as a named field on both `LIGHT_PALETTE` and `DARK_PALETTE` in
+`styles.py` rather than hardcoding a hex literal in the widget file — that's
+the only way dark mode can pick it up.
