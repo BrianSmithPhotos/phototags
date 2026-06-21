@@ -28,6 +28,7 @@ MODELS = [
     "openrouter:google/gemini-2.5-pro",
     "openrouter:openai/gpt-4o-mini",
     "openrouter:openai/gpt-5.1",
+    "openrouter:openai/gpt-5.5",
     "openrouter:anthropic/claude-opus-4.6",
     "openrouter:anthropic/claude-sonnet-4.5",
     "openrouter:qwen/qwen2.5-vl-72b-instruct",

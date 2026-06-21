@@ -26,6 +26,10 @@ GROUND_TRUTH_PATH = EVAL_DIR / "ground_truth.json"
 
 JUDGE_MODEL = "anthropic/claude-opus-4.5"
 
+# Restrict judging to this subset of candidate model ids (must match the "model"
+# field in eval/results/<model>.json). Empty list means judge every candidate.
+JUDGE_ONLY: list[str] = []
+
 sys.path.insert(0, str(EVAL_DIR.parent))
 
 from phototags.services.ai_suggestion_service import AiSuggestionError, AiSuggestionService  # noqa: E402
@@ -143,6 +147,8 @@ def main() -> None:
     result_file_by_model: dict[str, Path] = {}
     for result_file in result_files:
         payload = json.loads(result_file.read_text())
+        if JUDGE_ONLY and payload["model"] not in JUDGE_ONLY:
+            continue
         payloads_by_model[payload["model"]] = payload
         result_file_by_model[payload["model"]] = result_file
 

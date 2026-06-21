@@ -4,207 +4,207 @@
     "EVAL001.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correct species and scientific name with accurate golden hour and landscape description; comprehensive keywords."
+      "rationale": "Correct species identification with scientific name, noted golden hour lighting, and appropriately qualified as female/juvenile; thorough coverage of key elements."
     },
     "EVAL002.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies Plectranthus 'Mona Lavender' with spurflower; excellent keyword coverage matching ground truth."
+      "rationale": "Correctly identifies Plectranthus 'Mona Lavender' with accurate description including dark stems; includes spurflower common name and comprehensive botanical keywords."
     },
     "EVAL003.JPG": {
-      "accuracy": 4,
+      "accuracy": 3,
       "completeness": 4,
-      "rationale": "Correctly identifies American Avocets in non-breeding plumage with foraging behavior; duck identification is wrong (Ring-necked Duck vs Greater Scaup)."
+      "rationale": "Correctly identified American Avocets in non-breeding plumage with foraging behavior, but misidentified the duck as Ring-necked Duck instead of Greater Scaup."
     },
     "EVAL004.JPG": {
       "accuracy": 4,
       "completeness": 4,
-      "rationale": "Excellent description of granite canyon, reservoir, pine trees, and Sierra Nevada setting; good wildflower detail."
+      "rationale": "Correctly identifies reservoir in granite canyon, pine trees, Sierra Nevada, and notes wildflowers; good detail coverage but misses specific Donnell Reservoir identification."
     },
     "EVAL005.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Accurately captures zoom burst waterfall through dark ravine with forest, dynamic energy, and all key technical and visual elements."
+      "rationale": "Comprehensive and accurate description including zoom burst, abstract, waterfall, radial blur, dynamic energy, and forest setting."
     },
     "EVAL006.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Excellent coverage with sagebrush, artemisia tridentata, willow, salix, and logjam crossing; highly complete."
+      "rationale": "Excellent identification of creek, meadow, sagebrush with scientific name, willow with scientific name, logjam crossing, and riparian setting matching ground truth closely."
     },
     "EVAL007.JPG": {
       "accuracy": 4,
       "completeness": 4,
-      "rationale": "Good description with gondola, snow-dusted mountain, evergreen, and bright highlights suggesting lens flare; misses specific location and scratched windows."
+      "rationale": "Good description noting gondola, snow-dusted mountain, evergreen, and late afternoon sun; sunset claim slightly inaccurate, misses specific location."
     },
     "EVAL008.JPG": {
-      "accuracy": 4,
+      "accuracy": 3,
       "completeness": 4,
-      "rationale": "Correctly identifies Mono Lake tufa towers; claims Brewer's Blackbird on tower which cannot be clearly verified, potential invention."
+      "rationale": "Correctly identifies Mono Lake tufa towers and setting, but invents a Brewer's Blackbird that is not clearly visible in the image, introducing unverifiable detail that detracts from accuracy."
     },
     "EVAL009.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies osprey nest, tufa formation, and violet-green swallow (close relative to purple-green swallow); comprehensive coverage."
+      "rationale": "Correctly identifies osprey nest, tufa formation, and violet-green swallow (close relative to cliff swallow); covers all key elements accurately."
     },
     "EVAL010.JPG": {
       "accuracy": 2,
-      "completeness": 4,
-      "rationale": "Misidentifies as Sagebrush Sparrow; correctly describes singing, sagebrush habitat, and general setting well."
+      "completeness": 3,
+      "rationale": "Misidentifies as Sagebrush Sparrow instead of Brewer's Sparrow; correctly describes singing, perching on sagebrush, and habitat."
     },
     "EVAL011.JPG": {
       "accuracy": 4,
-      "completeness": 4,
-      "rationale": "Accurate description with kayakers, conifer forest, waterfall, and marsh; missing specific location and tree species."
+      "completeness": 3,
+      "rationale": "Accurately describes waterfall, conifer forest, alpine lake, marsh, and kayakers; uses generic conifer and lacks specific location details."
     },
     "EVAL012.JPG": {
-      "accuracy": 5,
+      "accuracy": 4,
       "completeness": 4,
-      "rationale": "Excellent identification of chasm, Eastern Sierra Nevada, geology, and forest; only missing specific Mammoth Lakes and Pinus contorta identification."
+      "rationale": "Correctly identifies chasm, Eastern Sierra Nevada, California, and geological features; good coverage of key elements though misses specific Mammoth Lakes reference."
     },
     "EVAL013.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies California evening primrose with scientific name, granite boulder, dry rocky environment; comprehensive coverage."
+      "rationale": "Correctly identifies California evening primrose with scientific name, granite boulder, dry rocky environment; excellent match to ground truth."
     },
     "EVAL014.JPG": {
       "accuracy": 5,
       "completeness": 4,
-      "rationale": "Accurately describes Half Dome, granite, Yosemite, California, Sierra Nevada, and pine forest; missing Olmsted Point viewpoint."
+      "rationale": "Accurate description with Half Dome, granite, Sierra Nevada, pine forest, and Yosemite; lacks Olmsted Point reference."
     },
     "EVAL015.JPG": {
       "accuracy": 5,
-      "completeness": 5,
-      "rationale": "Correctly identifies Mountain Pride (Penstemon newberryi), Half Dome, Yosemite, Sierra Nevada, granite; comprehensive and accurate."
+      "completeness": 4,
+      "rationale": "Correctly identifies Mountain Pride (Penstemon newberryi), Half Dome, granite, and Yosemite; includes Sierra Nevada but omits Olmsted Point."
     },
     "EVAL016.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Accurately identifies Yosemite Falls, park, California, Sierra Nevada, granite cliffs with comprehensive and accurate description."
+      "rationale": "Correctly identifies Yosemite Falls, granite cliffs, park, and vantage point; comprehensive keywords covering all major ground truth elements."
     },
     "EVAL017.JPG": {
       "accuracy": 4,
       "completeness": 4,
-      "rationale": "Correctly identifies Yosemite, likely El Capitan, hikers on overlook, and manzanita; hedges with 'likely' but accurate; misses explicit Taft Point identification."
+      "rationale": "Correctly identifies El Capitan and Yosemite with appropriate hedging, mentions hikers and manzanita, but doesn't explicitly name Taft Point viewpoint."
     },
     "EVAL018.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Excellent match to ground truth with correct species, takeoff action, rocky outcrop, blue sky, and comprehensive relevant keywords."
+      "rationale": "Accurately captures takeoff from rocky outcrop, correct species ID, wings spread detail verified; comprehensive keywords covering all key elements."
     },
     "EVAL019.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies snow plant (Sarcodes sanguinea), includes mycoheterotroph, coniferous forest, and parasitic plant; excellent comprehensive coverage."
+      "rationale": "Accurate identification with mycoheterotroph included; correctly describes coniferous forest floor with direct sunlight spot visible in image."
     },
     "EVAL020.JPG": {
       "accuracy": 4,
       "completeness": 4,
-      "rationale": "Accurately describes polypore/bracket fungus on deeply textured bark in coniferous forest; good detail."
+      "rationale": "Correctly identifies polypore/bracket fungus on deeply textured bark in sun-dappled coniferous forest; good detail but missing specific species identification."
     },
     "EVAL021.JPG": {
-      "accuracy": 5,
+      "accuracy": 4,
       "completeness": 4,
-      "rationale": "Correctly identifies Half Dome and Yosemite; Jeffrey pine identification is plausible but speculative; good overall coverage."
+      "rationale": "Correctly identifies Half Dome and Yosemite; Jeffrey pine identification is plausible but speculative; description focuses more on foreground tree than the scenic view."
     },
     "EVAL022.JPG": {
       "accuracy": 2,
       "completeness": 3,
-      "rationale": "Wrong identification as cushion buckwheat; correctly describes low-growing habit, pink/white clusters, dry rocky soil."
+      "rationale": "Misidentifies as cushion buckwheat; good habitat description with pink/white flowers and rocky soil but incorrect genus."
     },
     "EVAL023.JPG": {
       "accuracy": 3,
       "completeness": 4,
-      "rationale": "Correctly identifies Yosemite, California, granite, canyon, and high-angle but misidentifies as Nevada Fall instead of Vernal Fall."
+      "rationale": "Good detail on high-angle view, granite, canyon, and Yosemite but incorrectly identifies as Nevada Fall; includes California and relevant keywords."
     },
     "EVAL024.JPG": {
       "accuracy": 4,
       "completeness": 3,
-      "rationale": "Correctly identifies vintage locomotive #10 in wooden shed; 'roundhouse' in keywords is slightly inaccurate, missing Shay/heritage specifics."
+      "rationale": "Correctly identifies vintage locomotive #10 in wooden shed, but incorrectly mentions roundhouse and doesn't specify steam engine or Shay type."
     },
     "EVAL025.JPG": {
       "accuracy": 5,
-      "completeness": 4,
-      "rationale": "Correct species identification with scientific name; notes ear tufts and alert posture accurately; good keyword coverage."
+      "completeness": 5,
+      "rationale": "Correctly identifies American red squirrel with scientific name, notes ear tufts visible in image, describes alert posture and log/forest setting accurately."
     },
     "EVAL026.JPG": {
       "accuracy": 5,
       "completeness": 4,
-      "rationale": "Excellent description mentioning greasy dark metal, white steam, and vintage engine; only misses specific location identification."
+      "rationale": "Excellent accuracy noting greasy, dark metal machinery and white steam in sunlight; captures key visual elements but misses specific location."
     },
     "EVAL027.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies McNear Brickyard, Point San Pedro, San Pablo Bay, and Marin County with accurate description of overcast conditions and landscape."
+      "rationale": "Correctly identifies McNear Brickyard, San Pablo Bay, Point San Pedro, and California location with accurate description of overcast conditions and landscape elements."
     },
     "EVAL028.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Excellent identification of Mount Tamalpais East Peak with fire lookout (visible in image), comprehensive coverage of fog, clouds, forest, and location details."
+      "rationale": "Excellent identification of Mount Tamalpais with fire lookout detail visible in image; includes Marin County, California, and comprehensive atmospheric description."
     },
     "EVAL029.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies coyote mint (Monardella) with species name; accurately describes dry golden grass and summer field setting."
+      "rationale": "Correctly identifies coyote mint (Monardella villosa) with appropriate hedging; accurately describes dry golden grass and summer field setting."
     },
     "EVAL030.JPG": {
-      "accuracy": 5,
+      "accuracy": 4,
       "completeness": 5,
-      "rationale": "Accurate osprey identification, includes scientific name, overcast sky, and comprehensive relevant keywords."
+      "rationale": "Correct ID; 'hovering' is interpretive but plausible; 'talons extended' not clearly visible; excellent keyword coverage including 'sea hawk'."
     },
     "EVAL031.JPG": {
       "accuracy": 2,
-      "completeness": 3,
-      "rationale": "Misidentifies as Great Egrets; good description of setting and behavior but incorrect species."
+      "completeness": 4,
+      "rationale": "Wrong species (Great Egret); good description of multiple birds in treetop canopy but fundamental identification error."
     },
     "EVAL032.JPG": {
       "accuracy": 4,
       "completeness": 4,
-      "rationale": "Correctly identifies all three birds at genus level; gull not specified to species but otherwise accurate."
+      "rationale": "Correctly identifies all three birds though gull is generic; good coverage of dock, pier, fishing net, and coastal setting."
     },
     "EVAL033.JPG": {
       "accuracy": 2,
       "completeness": 3,
-      "rationale": "Misidentifies as Bay Bridge eastern span; good detail on bridge type and conditions but wrong bridge identification."
+      "rationale": "Misidentifies as SF-Oakland Bay Bridge old eastern span; includes good details like cantilever bridge, hazy conditions, cargo ship, but wrong bridge."
     },
     "EVAL034.JPG": {
       "accuracy": 5,
       "completeness": 4,
-      "rationale": "Good identification of Salesforce Tower, mentions Transamerica in keywords, notes haze and chaparral, but Marin Headlands not in description."
+      "rationale": "Accurately describes skyline, Salesforce Tower, haze, and chaparral hills; includes Transamerica Pyramid in keywords but not description; misses Marin Headlands name."
     },
     "EVAL035.JPG": {
       "accuracy": 4,
       "completeness": 3,
-      "rationale": "Accurate bobcat ID and coastal landscape description, but omits the significant bird prey detail."
+      "rationale": "Good species ID and coastal landscape description, but omits the bird prey detail."
     },
     "EVAL036.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Excellent identification of MSG Sphere, Las Vegas, Nevada, Palazzo, emoji/cartoon face, aerial view, and mentions airplane view capturing the wing context."
+      "rationale": "Excellent identification of MSG Sphere, Las Vegas, Nevada, Palazzo, aerial view from airplane; 'exosphere' is technically correct term for the LED exterior; comprehensive coverage."
     },
     "EVAL037.JPG": {
-      "accuracy": 3,
+      "accuracy": 2,
       "completeness": 4,
-      "rationale": "Wrong species (Laughing Gull) but correctly identifies crab, foraging behavior, and beach/ocean setting."
+      "rationale": "Incorrectly identifies as Laughing Gull (Leucophaeus atricilla) which has distinctly different appearance; good coverage of setting and behavior otherwise."
     },
     "EVAL038.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Excellent coverage with Monterey cypress identification (uses updated scientific name Hesperocyparis), all key elements present."
+      "rationale": "Comprehensive description with correct identification of all elements; uses updated scientific name Hesperocyparis macrocarpa which is equivalent to Cupressus macrocarpa."
     },
     "EVAL039.JPG": {
       "accuracy": 2,
       "completeness": 3,
-      "rationale": "Misidentifies as Semipalmated Plover; good setting description with algae-covered rocks and ocean surf."
+      "rationale": "Misidentifies as semipalmated plover, only mentions two shorebirds, but setting details are correct."
     },
     "EVAL040.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Correctly identifies gopher snake with scientific name and includes bullsnake synonym; accurately describes dusty dirt path with leaves."
+      "rationale": "Correct ID with scientific name and bullsnake synonym, accurate description of blotched pattern and dusty path with leaves and twigs."
     },
     "EVAL041.JPG": {
       "accuracy": 5,
       "completeness": 5,
-      "rationale": "Excellent identification of Chapman Stick, street musician, canopy tent, parking lot, tip jar, and tapping technique; very complete."
+      "rationale": "Excellent identification of Chapman Stick, street musician context, canopy tent, tip jar, and tapping technique; only missing performer's name."
     }
   }
 }
