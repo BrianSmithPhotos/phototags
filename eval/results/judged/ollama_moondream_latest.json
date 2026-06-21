@@ -1,0 +1,210 @@
+{
+  "model": "ollama:moondream:latest",
+  "judged": {
+    "EVAL001.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "Completely wrong identification as snowy egret; minimal keywords and no relevant details captured."
+    },
+    "EVAL002.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject."
+    },
+    "EVAL003.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Extremely vague description mentioning only ducks; misses avocets entirely and provides meaningless placeholder keywords."
+    },
+    "EVAL004.JPG": {
+      "accuracy": 3,
+      "completeness": 1,
+      "rationale": "Very basic description that is technically accurate but extremely vague with placeholder keywords."
+    },
+    "EVAL005.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL006.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL007.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to capture any image content."
+    },
+    "EVAL008.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL009.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "Incorrectly identifies bird as snowy egret; minimal description missing most key details including tufa, Mono Lake, and swallow."
+    },
+    "EVAL010.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL011.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL012.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Extremely vague description missing the fissure, forest type, and all specific details; keywords are placeholder-like."
+    },
+    "EVAL013.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL014.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "Generic mountain description with no identification of Half Dome, Yosemite, or any specific details; keywords are meaningless placeholders."
+    },
+    "EVAL015.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Extremely vague description with no species identification, no location, and placeholder keywords that provide no useful metadata."
+    },
+    "EVAL016.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Extremely vague description with placeholder keywords; misses all specific details about Yosemite, granite, and setting."
+    },
+    "EVAL017.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify any aspect of the image."
+    },
+    "EVAL018.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or any relevant details."
+    },
+    "EVAL019.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Generic description of a red flower in forest is technically not wrong but lacks any specific identification; keywords are placeholder-level."
+    },
+    "EVAL020.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Very vague description with minimal keywords; identifies mushroom on tree but lacks any specific detail."
+    },
+    "EVAL021.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify the subject or setting."
+    },
+    "EVAL022.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL023.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL024.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL025.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Generic squirrel identification is technically correct but lacks species detail; placeholder keywords provide no useful metadata."
+    },
+    "EVAL026.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Minimal description only says 'steam engine' with meaningless keywords; severely lacking in detail and completeness."
+    },
+    "EVAL027.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided, completely fails to describe the image."
+    },
+    "EVAL028.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided, completely fails to describe the image content."
+    },
+    "EVAL029.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL030.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL031.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL032.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify any subjects."
+    },
+    "EVAL033.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided, completely fails to describe the image."
+    },
+    "EVAL034.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify the subject."
+    },
+    "EVAL035.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL036.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL037.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to describe the image content."
+    },
+    "EVAL038.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to describe the image content."
+    },
+    "EVAL039.JPG": {
+      "accuracy": 2,
+      "completeness": 1,
+      "rationale": "Correctly notes rocky shore and two birds but provides no species identification and meaningless keywords."
+    },
+    "EVAL040.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided; completely fails to identify subject or setting."
+    },
+    "EVAL041.JPG": {
+      "accuracy": 1,
+      "completeness": 1,
+      "rationale": "No meaningful description or keywords provided, completely fails to describe the image."
+    }
+  }
+}

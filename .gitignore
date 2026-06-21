@@ -234,6 +234,10 @@ gps/Timeline*.json
 # Eval images (large binaries, kept local-only)
 eval/images/
 
+# Per-model eval candidate outputs (regenerable via run_candidates.py).
+# eval/results/judged/ (judge scores) is intentionally NOT ignored.
+eval/results/*.json
+
 # Local SQLite caches
 *.sqlite
 *.sqlite-*

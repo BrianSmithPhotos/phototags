@@ -1,0 +1,210 @@
+{
+  "model": "openrouter:openai/gpt-4o-mini",
+  "judged": {
+    "EVAL001.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correct species but missing scientific name; dusk vs golden hour is close; lacks some key keywords."
+    },
+    "EVAL002.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Incorrectly identifies as salvia; describes purple flowers and green foliage but wrong genus entirely."
+    },
+    "EVAL003.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies American avocets foraging; lesser scaup is close but wrong species (Greater Scaup in ground truth)."
+    },
+    "EVAL004.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Misidentifies reservoir as river; correctly notes California and general landscape features."
+    },
+    "EVAL005.JPG": {
+      "accuracy": 4,
+      "completeness": 2,
+      "rationale": "Correctly identifies waterfall but misses zoom burst/radial blur technique entirely; keywords suggest tranquil rather than dynamic."
+    },
+    "EVAL006.JPG": {
+      "accuracy": 3,
+      "completeness": 2,
+      "rationale": "Generic description with willow mentioned but no sagebrush; lacks specific identification and bridge detail."
+    },
+    "EVAL007.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly identifies cable car, mountain, snow, conifers, ski resort; misses lens flare, haze, specific location, and scratched windows."
+    },
+    "EVAL008.JPG": {
+      "accuracy": 5,
+      "completeness": 3,
+      "rationale": "Correctly identifies tufa at Mono Lake, California; description is minimal and lacks detail about limestone or towers specifically."
+    },
+    "EVAL009.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies cliff swallow as main subject with its nest; misses osprey nest identification and Mono Lake tufa."
+    },
+    "EVAL010.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as western meadowlark, a much larger and different species; notes singing but misses sagebrush specificity."
+    },
+    "EVAL011.JPG": {
+      "accuracy": 4,
+      "completeness": 2,
+      "rationale": "Basic accurate description but very generic; misses kayaks, specific location, and tree species identification."
+    },
+    "EVAL012.JPG": {
+      "accuracy": 3,
+      "completeness": 2,
+      "rationale": "Generic description of cliffs and valleys; misses fissure, volcanic nature, and all specific identifications."
+    },
+    "EVAL013.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly identifies evening primrose genus with rocky/dry environment but vague on species and misses granite/sandy soil specifics."
+    },
+    "EVAL014.JPG": {
+      "accuracy": 5,
+      "completeness": 3,
+      "rationale": "Correctly identifies Half Dome, Yosemite, granite, and forest; description is somewhat generic and missing Olmsted Point and Sierra Nevada."
+    },
+    "EVAL015.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly identifies penstemon genus and Yosemite but lacks species-level identification and doesn't mention Half Dome specifically."
+    },
+    "EVAL016.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies Yosemite National Park and waterfall but doesn't specify Yosemite Falls; includes wildlife keyword not relevant."
+    },
+    "EVAL017.JPG": {
+      "accuracy": 3,
+      "completeness": 2,
+      "rationale": "Correctly identifies Yosemite and granite cliffs but lacks specific identification of El Capitan, Taft Point, or the visitors on the cliff edge."
+    },
+    "EVAL018.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correct raven identification with scientific name, accurate takeoff description; 'aviary' keyword is slightly odd but overall good coverage."
+    },
+    "EVAL019.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as pinedrops (Pterospora andromedea); while related mycoheterotrophic plant, it's a different species with different appearance."
+    },
+    "EVAL020.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly identifies polypore on tree trunk in forest but description is generic and lacks detail."
+    },
+    "EVAL021.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies Half Dome, Yosemite, California; good coverage though missing some keywords like granite and Sierra Nevada."
+    },
+    "EVAL022.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Misidentifies as sedum; minimal description but correctly notes pink/white blooms and rock presence."
+    },
+    "EVAL023.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly suggests Yosemite and describes waterfall/forest but lacks specific waterfall name and granite mention."
+    },
+    "EVAL024.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly identifies steam locomotive #10 in wooden train shed; missing heritage railway context and Shay identification."
+    },
+    "EVAL025.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as eastern gray squirrel, a completely different species; setting description is accurate."
+    },
+    "EVAL026.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Accurate close-up description with pipes, valves, and steam; somewhat generic and misses location and greasy detail."
+    },
+    "EVAL027.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies location as Richmond instead of San Rafael; general coastal and industrial elements are correct but wrong city is a significant error."
+    },
+    "EVAL028.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Accurate basic description of mountain peak with clouds but vague; includes California keyword but lacks Mount Tamalpais specific identification."
+    },
+    "EVAL029.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as purple coneflower (Echinacea); setting description adequate but species identification is wrong."
+    },
+    "EVAL030.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies bird as bald eagle; generic flight keywords present but critical species misidentification."
+    },
+    "EVAL031.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies as snowy egrets without scientific name; good coverage of setting and multiple birds noted."
+    },
+    "EVAL032.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Correctly identifies snowy and great egret but completely omits the gull from description."
+    },
+    "EVAL033.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Misidentifies as San Francisco-Oakland Bay Bridge; captures general scene elements but wrong bridge."
+    },
+    "EVAL034.JPG": {
+      "accuracy": 4,
+      "completeness": 2,
+      "rationale": "Correctly identifies San Francisco skyline and hills but very generic, missing all specific landmarks and location details."
+    },
+    "EVAL035.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Accurate bobcat identification and coastal setting, good keywords, but misses the bird in its mouth."
+    },
+    "EVAL036.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correctly identifies spherical structure in Las Vegas with emoji face but fails to name it as the Sphere specifically; 'smiling face' is slightly inaccurate."
+    },
+    "EVAL037.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correct species identification but vague about crab (small object); covers beach and foraging but lacks detail."
+    },
+    "EVAL038.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Correct bridge and location but omits cypress trees entirely and skyline mention is minimal in keywords."
+    },
+    "EVAL039.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Misidentifies as black-bellied plover and mentions only one bird; basic setting description."
+    },
+    "EVAL040.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies gopher snake with scientific name and slithering action; setting accurate but missing bullsnake and non-venomous keywords."
+    },
+    "EVAL041.JPG": {
+      "accuracy": 3,
+      "completeness": 2,
+      "rationale": "Vague description with generic 'unique string instrument'; misses Chapman Stick identification and busking context."
+    }
+  }
+}

@@ -1,0 +1,210 @@
+{
+  "model": "ollama:qwen3.5:latest",
+  "judged": {
+    "EVAL001.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Misidentified as Black-winged Kite; captures rural setting but wrong species identification significantly impacts accuracy."
+    },
+    "EVAL002.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies Plectranthus genus and describes tubular lavender flowers accurately; missing specific cultivar name."
+    },
+    "EVAL003.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies American avocets with scientific name and notes foraging behavior; duck identification is vague but mentions diving ducks."
+    },
+    "EVAL004.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Accurately describes granite canyon, pine trees, reservoir, and wildflowers visible in image; good keyword coverage."
+    },
+    "EVAL005.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Accurately identifies zoom burst, waterfall, radial blur, and colors; only missing specific location reference and muted tones emphasis."
+    },
+    "EVAL006.JPG": {
+      "accuracy": 3,
+      "completeness": 2,
+      "rationale": "Identifies stream and meadow correctly but misses sagebrush and willow identification; mentions driftwood but not as bridge."
+    },
+    "EVAL007.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Good description with gondola, snow, pine forests, and correctly notes lens flare; misses specific Mammoth Mountain location and scratched windows."
+    },
+    "EVAL008.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies limestone tufa at Mono Lake with mountains; mentions a western gull which cannot be clearly verified in the image, slight invention risk."
+    },
+    "EVAL009.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Incorrectly identifies great egret instead of osprey; correctly identifies Mono Lake and tufa but misses the swallow entirely."
+    },
+    "EVAL010.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as Sage Sparrow (different species) but correctly notes sagebrush, singing, and perching behavior."
+    },
+    "EVAL011.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Describes scene accurately but mentions spruce incorrectly and misses kayaks and specific location details."
+    },
+    "EVAL012.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Mentions canyon and geology which partially captures the fissure concept, but lacks volcanic identification and specific location."
+    },
+    "EVAL013.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies California evening primrose with scientific name, boulder, and dry grass; missing sandy soil and granite specification."
+    },
+    "EVAL014.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correct identification of Half Dome, granite, Yosemite, forest, and blue sky; lacks Olmsted Point but includes California landscape."
+    },
+    "EVAL015.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies Penstemon newberryi (Sierra penstemon is acceptable common name), Half Dome, Yosemite, granite; missing Olmsted Point."
+    },
+    "EVAL016.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies granite cliff, valley, pine forests, and includes Yosemite Valley keyword; good coverage of key elements."
+    },
+    "EVAL017.JPG": {
+      "accuracy": 3,
+      "completeness": 4,
+      "rationale": "Correctly identifies El Capitan and Yosemite but wrongly states viewpoint is Sentinel Dome instead of Taft Point; good coverage of landscape elements."
+    },
+    "EVAL018.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Incorrectly identifies bird as American crow (Corvus brachyrhynchos) rather than common raven; otherwise describes flight and setting reasonably well."
+    },
+    "EVAL019.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as American Broomrape (Orobanche ramosa); while parasitic plant concept is noted, species ID is wrong."
+    },
+    "EVAL020.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies shelf fungus on bark with sunlight and conifer setting; good coverage but no species ID."
+    },
+    "EVAL021.JPG": {
+      "accuracy": null,
+      "completeness": null,
+      "rationale": "candidate errored, skipped"
+    },
+    "EVAL022.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as alpine stonecrop/Sedum; correctly describes pink/white flowers, rocky soil, and pine needles visible in image."
+    },
+    "EVAL023.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies Yosemite, high-angle view, granite cliffs, and forest; hiking trail mention is plausible but unverifiable from image."
+    },
+    "EVAL024.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Correctly identifies locomotive #10 and wooden structure, but 'roundhouse' is inaccurate; mentions American flag visible in image but misses steam/Shay identification."
+    },
+    "EVAL025.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as eastern grey squirrel (Sciurus carolinensis), which is a different species; setting description is accurate."
+    },
+    "EVAL026.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Good description of vintage locomotive with pipes, valves, and metal; includes vapor and vintage but misses location and grease detail."
+    },
+    "EVAL027.JPG": {
+      "accuracy": 4,
+      "completeness": 3,
+      "rationale": "Good description of industrial smokestacks, bay, and residential areas with overcast sky, but lacks specific location identification."
+    },
+    "EVAL028.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Describes mountain and clouds accurately but incorrectly states sky is overcast when image shows blue sky visible; lacks specific location identification."
+    },
+    "EVAL029.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as ironweed (Vernonia); describes setting reasonably but wrong species identification."
+    },
+    "EVAL030.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies osprey with scientific name, mentions overcast sky, flying, and includes relevant keywords matching ground truth."
+    },
+    "EVAL031.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as Great Egrets (Ardea alba) instead of Snowy Egrets; covers setting well but primary identification is wrong."
+    },
+    "EVAL032.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Misidentifies the gull as an avocet which is completely wrong; correctly identifies snowy and great egret."
+    },
+    "EVAL033.JPG": {
+      "accuracy": 3,
+      "completeness": 2,
+      "rationale": "Accurately describes visual elements including overcast sky and ships but doesn't identify the specific bridge or location."
+    },
+    "EVAL034.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies both Salesforce Tower and Transamerica Pyramid, notes haze, but misses Marin Headlands specific location."
+    },
+    "EVAL035.JPG": {
+      "accuracy": 2,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as Iberian lynx (wrong species, wrong continent) though hedges with bobcat mention; misses bird prey detail."
+    },
+    "EVAL036.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies the Sphere, Las Vegas, aerial view from airplane, and mentions Palazzo; notes school buses but describes emoji vaguely as 'facial expression graphic'."
+    },
+    "EVAL037.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Completely wrong species (American Oystercatcher); invents seaweed debris not visible; setting details partially correct."
+    },
+    "EVAL038.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Excellent identification including Monterey cypress with scientific name, bridge, skyline, and specific location reference."
+    },
+    "EVAL039.JPG": {
+      "accuracy": 3,
+      "completeness": 3,
+      "rationale": "Hedges with sandpipers or plovers which partially covers ground truth; good environmental details but no specific ID."
+    },
+    "EVAL040.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as Western black-bellied garter snake (Thamnophis elegans); setting description is accurate but species ID is wrong."
+    },
+    "EVAL041.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies instrument as lap steel guitar and tent color as blue (it's grey); does capture busker, tip jar, and outdoor elements."
+    }
+  }
+}

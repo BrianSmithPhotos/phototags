@@ -1,0 +1,210 @@
+{
+  "model": "openrouter:google/gemini-3.5-flash",
+  "judged": {
+    "EVAL001.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfect match with correct species, scientific name, golden hour, rural setting, and all key keywords covered."
+    },
+    "EVAL002.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfect identification of Mona Lavender spurflower Plectranthus; comprehensive keywords matching ground truth exactly."
+    },
+    "EVAL003.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies American avocets with scientific name and foraging behavior; duck identification is generic but acceptable."
+    },
+    "EVAL004.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Incorrectly identifies as Hetch Hetchy/Yosemite; otherwise good Sierra Nevada and reservoir description."
+    },
+    "EVAL005.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Excellent match identifying zoom burst waterfall on dark rocks with muted green foliage and all relevant technical keywords."
+    },
+    "EVAL006.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Accurately identifies willow (Salix) and sagebrush (Artemisia tridentata); misses the bridge/crossing element."
+    },
+    "EVAL007.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies gondola, snow, pine trees, haze, and lens flare; Pinus identification differs from ground truth Abies magnifica; misses specific location."
+    },
+    "EVAL008.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Excellent match to ground truth with limestone tufa towers, Mono Lake, California, mountains, and clear sky all correctly identified."
+    },
+    "EVAL009.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies osprey nest on tufa at Mono Lake, California; misses the swallow identification."
+    },
+    "EVAL010.JPG": {
+      "accuracy": 2,
+      "completeness": 4,
+      "rationale": "Misidentifies as Sagebrush Sparrow but correctly identifies Artemisia tridentata and singing behavior with good detail."
+    },
+    "EVAL011.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfectly identifies Twin Falls, Twin Lakes, Mammoth Lakes, California, lodgepole pines with scientific name, matching ground truth completely."
+    },
+    "EVAL012.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies chasm/fissure, Sierra Nevada, lodgepole pines with scientific name Pinus contorta; comprehensive and accurate."
+    },
+    "EVAL013.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies California evening primrose with scientific name, granite boulder, sandy soil; excellent match to ground truth."
+    },
+    "EVAL014.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Excellent match with Half Dome, Yosemite, California, Sierra Nevada, granite, forest, wilderness, and blue sky; only missing Olmsted Point and Hwy 120."
+    },
+    "EVAL015.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies mountain pride (Penstemon newberryi), Half Dome, Yosemite, granite, Sierra Nevada; excellent match to ground truth."
+    },
+    "EVAL016.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies Upper Yosemite Fall specifically, Yosemite National Park, California, granite cliff with excellent keyword match."
+    },
+    "EVAL017.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfectly matches ground truth with El Capitan, Taft Point, Yosemite, California, hikers on cliff edge, and comprehensive keyword coverage."
+    },
+    "EVAL018.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correct raven identification with scientific name, accurate description of flight over granite rocks and blue sky with good keyword coverage."
+    },
+    "EVAL019.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies snow plant (Sarcodes sanguinea), includes mycoheterotrophic and parasitic keywords, good forest floor description."
+    },
+    "EVAL020.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies Fomitopsis pinicola bracket fungus on conifer in sunny forest; matches ground truth closely."
+    },
+    "EVAL021.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Accurately identifies Half Dome, Yosemite, California, Sierra Nevada, granite; comprehensive keyword coverage."
+    },
+    "EVAL022.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as Eriogonum ovalifolium; accurately captures pink/white flowers, rocky soil, native wildflower characteristics."
+    },
+    "EVAL023.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfectly identifies Vernal Fall, Yosemite, California, aerial view, granite, pine forest, and Merced River."
+    },
+    "EVAL024.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Excellent identification of Shay steam locomotive #10 in wooden engine house at heritage railroad; captures all key ground truth elements."
+    },
+    "EVAL025.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Exact species match with scientific name; captures alert posture, forest setting, and includes fauna keyword; excellent coverage."
+    },
+    "EVAL026.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Accurate description matching ground truth closely with steam, mechanical parts, pipes, and vintage; misses location and grease."
+    },
+    "EVAL027.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies McNear Brickyard, Point San Pedro, San Rafael, California with accurate elevated view description and overcast sky."
+    },
+    "EVAL028.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies Mount Tamalpais East Peak with fire lookout, Marin County, California; accurately describes clouds, fog, and marine layer."
+    },
+    "EVAL029.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies coyote mint (Monardella); includes native plant keyword and accurate setting description matching ground truth."
+    },
+    "EVAL030.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Matches ground truth almost exactly with correct species, scientific name, overcast sky, and comprehensive keywords."
+    },
+    "EVAL031.JPG": {
+      "accuracy": 1,
+      "completeness": 2,
+      "rationale": "Incorrectly identifies as cattle egrets (Bubulcus ibis), which is a different species entirely; setting description adequate."
+    },
+    "EVAL032.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfect identification of all three species with correct scientific names matching ground truth exactly."
+    },
+    "EVAL033.JPG": {
+      "accuracy": 5,
+      "completeness": 4,
+      "rationale": "Correctly identifies Richmond-San Rafael Bridge and San Francisco Bay with accurate atmospheric description; missing oil tanker detail."
+    },
+    "EVAL034.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Excellent match to ground truth with both towers, Marin Headlands, and comprehensive keywords covering all key elements."
+    },
+    "EVAL035.JPG": {
+      "accuracy": 4,
+      "completeness": 4,
+      "rationale": "Correctly identifies bobcat, coastal setting, and includes California; still misses the bird prey but otherwise comprehensive."
+    },
+    "EVAL036.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies Sphere, Las Vegas, Nevada, yellow emoji, Palazzo, aerial view; comprehensive and accurate description."
+    },
+    "EVAL037.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies western gull with scientific name, scavenging on crab carcass, beach and ocean; matches ground truth excellently."
+    },
+    "EVAL038.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfect match with ground truth including Monterey cypress with scientific name and all key elements."
+    },
+    "EVAL039.JPG": {
+      "accuracy": 2,
+      "completeness": 3,
+      "rationale": "Misidentifies as black turnstone and surfbird; correctly describes tide pool setting with algae and waves."
+    },
+    "EVAL040.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Perfectly matches ground truth with correct species ID, scientific name, and setting description; includes bullsnake and non-venomous keywords."
+    },
+    "EVAL041.JPG": {
+      "accuracy": 5,
+      "completeness": 5,
+      "rationale": "Correctly identifies Chapman Stick, busking, canopy tent, tip jar, and outdoor performance; comprehensive coverage of key elements."
+    }
+  }
+}

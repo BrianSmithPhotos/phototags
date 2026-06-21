@@ -18,14 +18,11 @@ EVAL_DIR = Path(__file__).resolve().parent
 IMAGES_DIR = EVAL_DIR / "images"
 RESULTS_DIR = EVAL_DIR / "results"
 
+# mistral-medium-3.5:latest (127.7B, ~170GB) dropped entirely: too large for this
+# eval, ran for 14+ hours without finishing a single model pass.
+# OpenRouter candidates run first (no local GPU contention), then the smaller
+# not-yet-run Ollama models, smallest first.
 MODELS = [
-    "ollama:qwen3.6:35b",
-    "ollama:gemma4:12b",
-    "ollama:qwen2.5vl:72b",
-    "ollama:mistral-medium-3.5:latest",
-    "ollama:qwen3.5:latest",
-    "ollama:llama3.2-vision:11b",
-    "ollama:moondream:latest",
     "openrouter:google/gemini-2.5-flash",
     "openrouter:google/gemini-3.5-flash",
     "openrouter:google/gemini-2.5-pro",
@@ -34,7 +31,13 @@ MODELS = [
     "openrouter:anthropic/claude-opus-4.6",
     "openrouter:anthropic/claude-sonnet-4.5",
     "openrouter:qwen/qwen2.5-vl-72b-instruct",
+    "openrouter:mistralai/mistral-medium-3-5",
+    "ollama:moondream:latest",
+    "ollama:qwen3.5:latest",
 ]
+# ollama:llama3.2-vision:11b dropped: blocked by an open Ollama regression
+# (unknown model architecture: 'mllama'), see ollama/ollama#16490. Not fixable
+# locally; revisit once upstream ships a fix.
 
 sys.path.insert(0, str(EVAL_DIR.parent))
 
@@ -89,8 +92,11 @@ def main() -> None:
     service = AiSuggestionService()
 
     for model in MODELS:
-        print(f"=== {model} ===")
         output_path = RESULTS_DIR / f"{safe_model_name(model)}.json"
+        if output_path.exists():
+            print(f"=== {model} === skip (results already exist: {output_path})")
+            continue
+        print(f"=== {model} ===")
         results = run_model(service, model, image_paths)
         output_path.write_text(json.dumps({"model": model, "results": results}, indent=2) + "\n")
         print(f"wrote {output_path}")
