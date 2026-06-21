@@ -540,6 +540,7 @@ class SourcePanel(QWidget):
         variant strip.
         """
         self._non_representative_paths = set(non_representative_paths)
+        self._apply_panel_max_width()
         self._relayout_grid()
 
     def _on_stacked_toggled(self, checked: bool) -> None:
@@ -563,35 +564,57 @@ class SourcePanel(QWidget):
             ]
         return list(self._current_image_paths)
 
-    def _apply_panel_max_width(self) -> None:
-        """Cap panel width to fit exactly one thumbnail column when stacked.
+    def _visible_column_count(self) -> int:
+        """Return 1 when stacking is actually hiding non-representative tiles, else the full grid width.
 
-        Stacked mode (the default) only ever shows one tile per capture set, so the
-        left column should not be wider than a single thumbnail; any extra space a
-        user drags into this column instead flows to the middle preview panel,
-        since QSplitter gives slack to siblings once a child hits its maximumWidth.
-        Un-stacking shows the full 2-column grid, so the cap widens to fit that.
+        Stacking only collapses to one tile per capture set once grouping data has
+        resolved enough to know which paths are non-representative; until then (or
+        if a folder has no multi-file capture sets at all) every photo is visible,
+        so the 2-column grid applies regardless of the "Stacked?" checkbox state.
+        """
+        if self._stacked_enabled and self._non_representative_paths:
+            return 1
+        return GRID_COLUMN_COUNT
+
+    def _apply_panel_max_width(self) -> None:
+        """Cap panel width to fit exactly one thumbnail column when stacking is in effect.
+
+        Stacked mode collapses to one tile per capture set, so the left column
+        should not be wider than a single thumbnail; any extra space a user drags
+        into this column instead flows to the middle preview panel, since
+        QSplitter gives slack to siblings once a child hits its maximumWidth.
+        Showing the full 2-column grid (un-stacked, or stacking not yet resolved)
+        widens the cap to fit that.
         """
         scrollbar_extent = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
         margins = 2 * PANEL_CONTENT_MARGIN + 2 * PANEL_FRAME_BORDER
-        column_count = 1 if self._stacked_enabled else GRID_COLUMN_COUNT
+        column_count = self._visible_column_count()
         columns_width = column_count * THUMBNAIL_TILE_WIDTH + (column_count - 1) * GRID_SPACING
         self.setMaximumWidth(columns_width + scrollbar_extent + margins)
 
     def _relayout_grid(self) -> None:
-        """Show/hide and re-flow existing tiles without re-decoding any thumbnails."""
+        """Show/hide and re-flow existing tiles without re-decoding any thumbnails.
+
+        Newly created tiles have no parent yet (see `_load_folder_images`), so
+        `addWidget` must reparent them into the grid before `setVisible` runs —
+        calling `setVisible(True)` on a still-parentless widget makes Qt treat it
+        as its own top-level native window, which is enormously expensive once
+        hundreds of tiles do it on the first layout pass.
+        """
         visible_paths = self._visible_paths()
         visible_keys = {str(path) for path in visible_paths}
-        column_count = 1 if self._stacked_enabled else GRID_COLUMN_COUNT
+        column_count = self._visible_column_count()
 
-        for key, tile in self._thumb_tiles.items():
+        for tile in self._thumb_tiles.values():
             self.thumb_grid.removeWidget(tile)
-            tile.setVisible(key in visible_keys)
 
         for index, image_path in enumerate(visible_paths):
             tile = self._thumb_tiles.get(str(image_path))
             if tile is not None:
                 self.thumb_grid.addWidget(tile, index // column_count, index % column_count)
+
+        for key, tile in self._thumb_tiles.items():
+            tile.setVisible(key in visible_keys)
 
     def select_path(self, image_path: Path, *, emit_signal: bool = True) -> bool:
         """Select a file tile programmatically when it exists in current grid."""

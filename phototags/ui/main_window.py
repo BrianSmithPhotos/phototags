@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from functools import partial
 import os
 from pathlib import Path
+import time
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
@@ -43,6 +44,7 @@ from phototags.workers.process_batch_mover import ProcessBatchResult, ProcessBat
 
 PREVIEW_MAX_EDGE = 2800
 THUMBNAIL_WORKERS = 4
+GROUP_UI_APPLY_MIN_INTERVAL_S = 0.3
 DESTINATION_ROOT = Path("/Users/bsmi067/Pictures/DxO")
 GROUP_DEBUG_ENABLED = os.getenv("PHOTOTAGS_GROUP_DEBUG", "").strip().casefold() in {"1", "true", "yes"}
 
@@ -102,6 +104,7 @@ class MainWindow(QMainWindow):
         self._active_group_jobs: dict[int, tuple[CaptureGroupLoadTask, CaptureGroupLoadSignals]] = {}
         self._capture_groups: tuple[CaptureGroup, ...] = tuple()
         self._group_by_path: dict[Path, CaptureGroup] = {}
+        self._group_ui_last_applied_at: float = 0.0
         self._preview_request_id = 0
         self._preview_job_id = 0
         self._active_preview_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
@@ -318,6 +321,7 @@ class MainWindow(QMainWindow):
         image_paths = self.source_panel.current_image_paths
         self._capture_groups = tuple()
         self._group_by_path = {}
+        self._group_ui_last_applied_at = 0.0
         self.source_panel.set_group_sizes({})
         self.source_panel.set_capture_group_membership(set())
 
@@ -500,6 +504,13 @@ class MainWindow(QMainWindow):
         latest batch in isolation — so this replaces prior state outright rather
         than merging, otherwise a set whose members crossed a batch boundary would
         leave both the old split groups and the corrected one in `_capture_groups`.
+
+        Applying each batch to the UI re-flows every tile in the source grid, which
+        is cheap for a folder's worth of batches but not for the dozens of batches a
+        thousand-plus-photo folder produces in quick succession — so intermediate
+        batches update only the internal grouping state and are throttled to one
+        grid re-flow per `GROUP_UI_APPLY_MIN_INTERVAL_S`; the final batch always
+        applies so the grid ends up showing the complete, correct result.
         """
         if is_final_batch:
             self._finish_group_job(job_id)
@@ -510,6 +521,12 @@ class MainWindow(QMainWindow):
 
         self._capture_groups = result.groups
         self._group_by_path = dict(result.by_path)
+
+        now = time.monotonic()
+        if not is_final_batch and now - self._group_ui_last_applied_at < GROUP_UI_APPLY_MIN_INTERVAL_S:
+            return
+        self._group_ui_last_applied_at = now
+
         group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
         self.source_panel.set_group_sizes(group_sizes)
         self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
