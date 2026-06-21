@@ -302,7 +302,7 @@ class SourcePanel(QWidget):
                 color: {BROWN_TEXT};
                 font-size: 11px;
             }}
-            QLineEdit, QTreeView, QPushButton {{
+            QLineEdit, QPushButton, QCheckBox {{
                 color: {BROWN_TEXT};
                 font-size: 12px;
             }}

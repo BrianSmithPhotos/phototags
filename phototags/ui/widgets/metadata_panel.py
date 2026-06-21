@@ -320,7 +320,7 @@ class MetadataPanel(QWidget):
                 color: {BROWN_TEXT};
                 font-size: 11px;
             }}
-            QLabel, QLineEdit, QTextEdit {{
+            QLabel, QLineEdit, QTextEdit, QCheckBox {{
                 color: {BROWN_TEXT};
                 font-size: 12px;
             }}

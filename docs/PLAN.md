@@ -47,6 +47,25 @@ This document is the active implementation snapshot + next-step checklist.
   occasion two coexist the lower number is the one still being imported
   from. Falls back to `/Volumes` (browsable, not auto-populated) when no SD
   card with that structure is mounted.
+- [x] Fixed: app window never appeared on large folders (~1800 photos). Root
+  cause in `source_panel.py`'s `_relayout_grid` — every `ThumbnailTile` is
+  constructed with no parent, and the method called `setVisible(True)` on
+  tiles before `addWidget` reparented them into the grid, so Qt promoted each
+  one to its own top-level native `NSWindow`; AppKit's window-ordering insert
+  cost scales with existing window count, making the whole pass O(n^2) and
+  the window never reached `show()`. Fixed by reordering so `addWidget` runs
+  before `setVisible`. Two related smaller fixes landed alongside it: the
+  "Stacked?" grid no longer forces a single, all-photos column before capture
+  grouping has resolved anything to hide (it now matches the un-stacked
+  2-column grid until there's actually something to collapse), and
+  `main_window._on_groups_loaded` throttles the per-batch grid re-flow
+  (`GROUP_UI_APPLY_MIN_INTERVAL_S`) so a folder with dozens of EXIF batches
+  doesn't re-layout every tile on every batch — the final batch always
+  applies regardless, so the end result is unaffected. Confirmed via a
+  `sample`-based stack trace on the real (non-offscreen) app pointing
+  straight at `NSWindow initWithContentRect:`/window-ordering calls; verified
+  fix by timing `show()` against a real 1778-file SD card folder (window now
+  appears in ~3s, vs. never appearing after 30+ seconds before).
 
 ### Part 3 - EXIF read and mapping
 
@@ -186,6 +205,18 @@ Implementation note:
   lightened/brightened (not simply inverted) from their light-mode values for
   WCAG-reasonable contrast. Toggle lives as a "Dark Mode" checkbox next to
   "Stacked?" in the source panel.
+- [x] Fixed: the "Dark Mode" checkbox label itself was unreadable in dark
+  mode (no color rule targeted `QCheckBox`, so its text used the real macOS
+  appearance's native color while sitting on the custom-painted, always-dark
+  panel background). `QCheckBox` is transparent with no opaque background of
+  its own, so its text must track the active custom palette like the rest of
+  the panel's labels — added it to the existing `BROWN_TEXT` rule in both
+  `source_panel.py` (fixes "Dark Mode"/"Stacked?") and `metadata_panel.py`
+  (fixes "Auto lookup altitude when missing"). The folder tree (`QTreeView`)
+  went the other way: removed its custom text-color override entirely, since
+  it paints its own opaque native background regardless of the in-app
+  toggle — leaving it fully native means its colors always match its own
+  background correctly, light or dark, without tracking the in-app setting.
 
 ## 3. Location Enrichment Completed
 
