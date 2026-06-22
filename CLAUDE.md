@@ -11,6 +11,10 @@ and copying files into local storage.
 Current status, completed scope, and open backlog live in `docs/PLAN.md` — read it before starting
 work and keep it updated as work completes.
 
+Test suite (`tests/`, run with `uv run pytest`) and what's covered vs. not yet covered: `docs/TESTING.md`.
+When extracting or adding pure decision logic (no Qt/subprocess/network), add it to `services/` and
+cover it there per that doc's conventions.
+
 ## Stack & Tooling
 
 - macOS only. Native look and feel, standard Cmd-based shortcuts.

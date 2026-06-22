@@ -4,6 +4,8 @@ Last updated: 2026-06-21
 
 This document is the active implementation snapshot + next-step checklist.
 
+See `docs/TESTING.md` for the automated test suite (`uv run pytest`) and what's covered vs. open.
+
 ## 1. Completed Core Scope
 
 ### Part 1 - App shell and architecture
@@ -345,6 +347,17 @@ Use this when importing a new full-history timeline export.
 - [ ] Confirm successful process operations skip files from the active session list.
 
 ## 6. Open Work / Backlog
+
+### Automated test coverage
+
+- [x] Initial pytest suite (38 tests, `tests/services/`) covering pure logic only:
+  `auto_metadata`, `capture_group_service`, `rename_service`, and two new
+  service modules extracted from `main_window.py`/`source_panel.py` for
+  testability: `selection_scope.py` and `grid_navigation.py`. See
+  `docs/TESTING.md` for what's covered and the prioritized list of what to add
+  next (pure helpers still embedded in `ExifService`/`AiSuggestionService`,
+  then `subprocess`/`urllib`-mocked tests for the I/O-shelled services, then
+  integration tests, then `pytest-qt` widget tests only if needed).
 
 ### Grouping quality refinement
 

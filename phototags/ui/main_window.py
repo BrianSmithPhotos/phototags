@@ -21,6 +21,7 @@ from phototags.services.metadata_write_service import MetadataWriteService
 from phototags.services.process_move_service import ProcessMoveService
 from phototags.services.reverse_geocode_service import ReverseGeocodeResult, ReverseGeocodeService
 from phototags.services.rename_service import RenameContext, RenameService
+from phototags.services.selection_scope import expand_to_capture_groups, pick_ai_source_path
 from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
 from phototags.services.timeline_sync_service import TimelineSyncService
 from phototags.ui.styles import WINDOW_BACKGROUND
@@ -286,18 +287,8 @@ class MainWindow(QMainWindow):
         return len(self._multi_selected_paths) > 1 and selected_path in self._multi_selected_paths
 
     def _expand_to_capture_groups(self, paths: tuple[Path, ...]) -> tuple[Path, ...]:
-        """Expand each path to its full capture-group membership, deduped.
-
-        A manual multi-selection in stacked view selects one representative
-        thumbnail per capture set; without this expansion, AI/GPS/save/process
-        actions would only touch those representative files and silently skip
-        the other members (e.g. the ORF) of each selected set.
-        """
-        expanded: list[Path] = []
-        for path in paths:
-            group = self._group_by_path.get(path)
-            expanded.extend(group.members if group is not None else (path,))
-        return tuple(self._dedupe_paths(expanded))
+        """Expand each path to its full capture-group membership; see `selection_scope`."""
+        return expand_to_capture_groups(paths, self._group_by_path)
 
     def _non_representative_paths_for_current_groups(self) -> set[Path]:
         """Compute which currently-visible files are non-representative capture-set members.
@@ -769,7 +760,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_ai_status("No file selected", is_error=True)
             return
         representative_path, target_paths = self._ai_targets_for(selected_path)
-        ai_source_path = self._ai_source_path_for(representative_path, target_paths)
+        ai_source_path = pick_ai_source_path(representative_path, target_paths)
         model_name = self.metadata_panel.ai_model_name() or DEFAULT_PROVIDER_MODEL
         self.metadata_panel.set_ai_model_name(model_name)
 
@@ -1481,23 +1472,6 @@ class MainWindow(QMainWindow):
         if group is None:
             return selected_path, (selected_path,)
         return group.representative_path, tuple(group.members)
-
-    def _ai_source_path_for(self, representative_path: Path, target_paths: tuple[Path, ...]) -> Path:
-        """Prefer an ORF in the target set over the JPEG representative for AI analysis.
-
-        Capture-group representative selection prefers a JPEG (see
-        `CaptureGroupService._pick_representative`) for thumbnail/preview purposes,
-        but an OM System Art Filter Bracket burst shares one unfiltered RAW capture
-        across several differently-filtered JPEG renders (monochrome, grainy film,
-        etc.). Sending one of those JPEGs to the AI skews the description/keywords
-        toward that filter instead of the actual scene, so prefer the ORF's
-        embedded preview when one is present in the set.
-        """
-        orf_candidates = sorted(
-            (path for path in target_paths if path.suffix.casefold() == ".orf"),
-            key=lambda path: path.name.casefold(),
-        )
-        return orf_candidates[0] if orf_candidates else representative_path
 
     def _gps_target_paths(self, selected_path: Path) -> tuple[Path, ...]:
         """Return capture-set members for GPS/altitude apply actions.
