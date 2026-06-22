@@ -58,10 +58,10 @@ it embedded where it can only be tested by driving the whole UI.
 | `test_auto_metadata.py` | `auto_metadata.py`: keyword parsing/merging/dedup, `sooc` token rule, art-filter description note | Runs on every save/process; a dedup or string-formatting bug silently corrupts metadata written to disk. |
 | `test_capture_group_service.py` | `capture_group_service.py`: same-second bucketing, representative selection (JPEG-over-ORF, filename order), missing-datetime singleton handling, `batch_image_paths` same-stem boundary protection | Capture grouping decides what "Save Capture Set" / "Process Capture Set" / AI-apply actually touch — get this wrong and the wrong files get written or skipped. |
 | `test_selection_scope.py` | `selection_scope.py` (new): expanding a manual multi-selection to full capture-group membership, ORF-preference for AI source image | Direct regression coverage for this session's bug #1 (selection not expanding to full sets) and #3 (monochrome JPEG sent to AI instead of the ORF). |
-| `test_grid_navigation.py` | `grid_navigation.py` (new): next-tile-after-skip, including multi-tile skips and the all-removed edge case | Direct regression coverage for this session's bug #2 (skip focus jumping back to the first tile instead of advancing). |
+| `test_grid_navigation.py` | `grid_navigation.py`: next-tile-after-skip, including multi-tile skips and the all-removed edge case; `resolve_removal_anchor`'s mapping of a hidden capture-set member back to its visible tile for both partial-set and whole-set removal | Regression coverage for skip focus jumping back to the first tile instead of advancing, including when the active selection was a hidden ORF/JPG variant rather than the visible tile. |
 | `test_rename_service.py` | `rename_service.py`: filename pattern assembly, sanitization, collision-suffixing, missing-field fallbacks | Renaming runs on every processed file; a sanitization or collision bug means silent overwrites or invalid filenames on disk. |
 
-38 tests, all currently passing, ~0.03s total.
+41 tests, all currently passing, ~0.03s total.
 
 ## Future test batches
 

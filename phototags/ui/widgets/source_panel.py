@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QDir, QFileInfo, QThreadPool, Qt, Signal
+from PySide6.QtCore import QDir, QFileInfo, QSettings, QThreadPool, Qt, Signal
 from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,12 +25,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from phototags.services.grid_navigation import next_selection_after_removal
+from phototags.services.grid_navigation import resolve_removal_anchor
 from phototags.ui.styles import (
     ACCENT_CYAN,
     BROWN_TEXT,
     DARK_TEAL,
     PANEL_BACKGROUND,
+    SETTINGS_APPLICATION,
+    SETTINGS_ORGANIZATION,
     THUMB_PLACEHOLDER_BG,
     THUMB_PLACEHOLDER_BORDER,
     TILE_BG_DEFAULT,
@@ -49,6 +51,25 @@ THUMBNAIL_TILE_HEIGHT = 168
 GRID_SPACING = 8
 PANEL_CONTENT_MARGIN = 12
 PANEL_FRAME_BORDER = 1
+SKIPPED_PATHS_SETTINGS_GROUP = "skipped_paths"
+
+
+def _settings() -> QSettings:
+    """Build the app's QSettings store with explicit org/app name (see `styles._settings`)."""
+    return QSettings(SETTINGS_ORGANIZATION, SETTINGS_APPLICATION)
+
+
+def _load_persisted_skips(folder_path: Path) -> set[Path]:
+    """Return previously-skipped file paths recorded for this folder across past sessions."""
+    names = _settings().value(f"{SKIPPED_PATHS_SETTINGS_GROUP}/{folder_path}", [])
+    if isinstance(names, str):
+        names = [names]  # QSettings collapses a single-item list to a plain string on macOS.
+    return {folder_path / name for name in names}
+
+
+def _persist_skips_for_folder(folder_path: Path, skipped_names: set[str]) -> None:
+    """Record this folder's currently-skipped filenames so they stay skipped next session."""
+    _settings().setValue(f"{SKIPPED_PATHS_SETTINGS_GROUP}/{folder_path}", sorted(skipped_names))
 
 
 class ThumbnailTile(QFrame):
@@ -181,6 +202,7 @@ class SourcePanel(QWidget):
         self._active_thumb_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
         self._stacked_enabled = True
         self._non_representative_paths: set[Path] = set()
+        self._member_to_visible_path: dict[Path, Path] = {}
         self._build_ui()
         self._set_source_path(source_dir)
 
@@ -349,8 +371,10 @@ class SourcePanel(QWidget):
         self._group_sizes = {}
         self._thumbnail_pixmaps = {}
         self._non_representative_paths = set()
+        self._member_to_visible_path = {}
         self._clear_grid()
 
+        self._skipped_paths |= _load_persisted_skips(folder_path)
         image_paths = self._find_supported_images(folder_path)
         self._current_image_paths = image_paths
         self.folder_selected.emit(folder_path)
@@ -501,9 +525,19 @@ class SourcePanel(QWidget):
         return tuple(path for path in self._current_image_paths if path in self._multi_selected_paths)
 
     def _apply_multi_selection_style(self) -> None:
-        """Restyle every tile to reflect current multi-selection membership."""
+        """Restyle every tile to reflect current multi-selection membership.
+
+        A selected path may be a hidden capture-set member (selected via the
+        preview's variant strip, e.g. the ORF of a stacked JPG+ORF pair)
+        rather than the visible tile itself; map it through
+        `_member_to_visible_path` so the set's one visible tile still shows as
+        selected instead of nothing highlighting at all.
+        """
+        highlighted = {
+            self._member_to_visible_path.get(path, path) for path in self._multi_selected_paths
+        }
         for path_text, tile in self._thumb_tiles.items():
-            tile.set_selected(Path(path_text) in self._multi_selected_paths)
+            tile.set_selected(Path(path_text) in highlighted)
 
     def _update_file_count_label(self) -> None:
         """Refresh the file count label, appending a multi-selection hint when active."""
@@ -533,14 +567,18 @@ class SourcePanel(QWidget):
         for path_text, tile in self._thumb_tiles.items():
             tile.set_group_size(self._group_sizes.get(Path(path_text), 1))
 
-    def set_capture_group_membership(self, non_representative_paths: set[Path]) -> None:
+    def set_capture_group_membership(self, member_to_visible_path: dict[Path, Path]) -> None:
         """Record which currently-displayed files are non-representative capture-set members.
 
         When "Stacked?" is on, these are hidden from the grid so only one tile per
         capture set is shown; the full set remains reachable via the preview panel's
-        variant strip.
+        variant strip. `member_to_visible_path` maps each hidden member to the
+        path of its group's one visible tile, so selecting a hidden member
+        (e.g. via the variant strip) can still be reflected as a selection of
+        that visible tile for highlighting and skip-focus purposes.
         """
-        self._non_representative_paths = set(non_representative_paths)
+        self._member_to_visible_path = dict(member_to_visible_path)
+        self._non_representative_paths = set(self._member_to_visible_path.keys())
         self._apply_panel_max_width()
         self._relayout_grid()
 
@@ -632,16 +670,25 @@ class SourcePanel(QWidget):
         return self._thumbnail_pixmaps.get(image_path)
 
     def mark_skipped(self, image_path: Path) -> None:
-        """Hide a file from the current session without touching disk."""
+        """Hide a file from this and future sessions without touching disk."""
         self._skipped_paths.add(image_path)
+        self._persist_skipped_for_current_folder()
         self._remove_from_session([image_path])
 
     def mark_skipped_many(self, image_paths: list[Path]) -> None:
-        """Hide many files from the current session without touching disk."""
+        """Hide many files from this and future sessions without touching disk."""
         if not image_paths:
             return
         self._skipped_paths.update(image_paths)
+        self._persist_skipped_for_current_folder()
         self._remove_from_session(image_paths)
+
+    def _persist_skipped_for_current_folder(self) -> None:
+        """Save the current folder's skipped filenames so they stay skipped next session."""
+        names = {
+            path.name for path in self._skipped_paths if path.parent == self._current_folder
+        }
+        _persist_skips_for_folder(self._current_folder, names)
 
     def _remove_from_session(self, image_paths: list[Path]) -> None:
         """Remove specific tiles from the visible grid without reloading the folder.
@@ -651,16 +698,19 @@ class SourcePanel(QWidget):
         """
         removed_keys = {str(path) for path in image_paths}
         previous_visible_paths = self._visible_paths()
+
+        was_selected = self._selected_path is not None and str(self._selected_path) in removed_keys
+        next_path = (
+            resolve_removal_anchor(
+                self._selected_path, previous_visible_paths, removed_keys, self._member_to_visible_path
+            )
+            if was_selected
+            else None
+        )
+
         self._current_image_paths = [
             path for path in self._current_image_paths if str(path) not in removed_keys
         ]
-
-        was_selected = self._selected_path is not None and str(self._selected_path) in removed_keys
-        selected_index = (
-            previous_visible_paths.index(self._selected_path)
-            if was_selected and self._selected_path in previous_visible_paths
-            else None
-        )
 
         for key in removed_keys:
             tile = self._thumb_tiles.pop(key, None)
@@ -675,6 +725,8 @@ class SourcePanel(QWidget):
         if self._range_anchor_path in removed_paths:
             self._range_anchor_path = None
         self._non_representative_paths -= removed_paths
+        for path in removed_paths:
+            self._member_to_visible_path.pop(path, None)
         self._update_file_count_label()
 
         if not self._current_image_paths:
@@ -692,11 +744,6 @@ class SourcePanel(QWidget):
         self._apply_multi_selection_style()
 
         if was_selected:
-            next_path = None
-            if selected_index is not None:
-                next_path = next_selection_after_removal(
-                    previous_visible_paths, selected_index, removed_keys
-                )
             if next_path is None:
                 next_path = self._current_image_paths[0]
             self._set_selected_path(next_path)

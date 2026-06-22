@@ -229,6 +229,30 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_gps_status(f"Timeline.json sync from Google Drive failed: {error}", is_error=True)
 
     def _on_photo_selected(self, image_path: Path | None) -> None:
+        """Handle a fresh capture-set/tile selection, defaulting its preview to the ORF member."""
+        if image_path is not None:
+            default_path = self._default_preview_path(image_path)
+            if default_path != image_path:
+                self.source_panel.select_path(default_path, emit_signal=False)
+                image_path = default_path
+        self._activate_selected_preview(image_path)
+
+    def _default_preview_path(self, image_path: Path) -> Path:
+        """Prefer the ORF member when freshly entering a capture set at its representative.
+
+        Mirrors `pick_ai_source_path`'s ORF preference (an Art Filter Bracket
+        burst's JPEG representative is a filtered render, not the plain
+        scene), applied here so the preview defaults to it too. Only applies
+        when `image_path` is exactly the group's representative -- an
+        explicit variant-strip click already names the file the user wants
+        and must not be overridden.
+        """
+        group = self._group_by_path.get(image_path)
+        if group is None or group.representative_path != image_path:
+            return image_path
+        return pick_ai_source_path(image_path, group.members)
+
+    def _activate_selected_preview(self, image_path: Path | None) -> None:
         """Start background preview loading for selected photo."""
         self._sync_current_draft()
         self._selected_image_path = image_path
@@ -290,12 +314,14 @@ class MainWindow(QMainWindow):
         """Expand each path to its full capture-group membership; see `selection_scope`."""
         return expand_to_capture_groups(paths, self._group_by_path)
 
-    def _non_representative_paths_for_current_groups(self) -> set[Path]:
-        """Compute which currently-visible files are non-representative capture-set members.
+    def _non_representative_paths_for_current_groups(self) -> dict[Path, Path]:
+        """Map each currently-visible non-representative capture-set member to its visible tile.
 
         A group's representative may have been skipped/removed individually while
         other members remain; in that case the first remaining member takes over
-        as the visible one instead of the whole set disappearing.
+        as the visible one instead of the whole set disappearing. The source panel
+        uses this mapping to keep a hidden member's selection (e.g. via the preview's
+        variant strip) reflected as a selection of its group's visible tile.
         """
         current_paths = self.source_panel.current_image_paths
         present_members_by_group: dict[int, list[Path]] = {}
@@ -305,7 +331,7 @@ class MainWindow(QMainWindow):
                 continue
             present_members_by_group.setdefault(id(group), []).append(path)
 
-        non_representative: set[Path] = set()
+        member_to_visible: dict[Path, Path] = {}
         for path in current_paths:
             group = self._group_by_path.get(path)
             if group is None:
@@ -319,8 +345,8 @@ class MainWindow(QMainWindow):
                 else present_members[0]
             )
             if path != representative:
-                non_representative.add(path)
-        return non_representative
+                member_to_visible[path] = representative
+        return member_to_visible
 
     def _on_folder_selected(self, folder_path: Path) -> None:
         """Start background capture grouping for the selected folder."""
@@ -329,7 +355,7 @@ class MainWindow(QMainWindow):
         self._group_by_path = {}
         self._group_ui_last_applied_at = 0.0
         self.source_panel.set_group_sizes({})
-        self.source_panel.set_capture_group_membership(set())
+        self.source_panel.set_capture_group_membership({})
 
         if not image_paths:
             self.preview_panel.set_variants([], None)
@@ -536,7 +562,17 @@ class MainWindow(QMainWindow):
         group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
         self.source_panel.set_group_sizes(group_sizes)
         self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
-        self._refresh_variant_strip(self._selected_image_path)
+
+        # The very first file opened at folder-load time is often selected before this
+        # batch's grouping data exists, so it never got a chance to default to its
+        # group's ORF member (see `_default_preview_path`); re-check now that it can.
+        selected = self._selected_image_path
+        default_path = self._default_preview_path(selected) if selected is not None else None
+        if default_path is not None and default_path != selected:
+            self.source_panel.select_path(default_path, emit_signal=False)
+            self._activate_selected_preview(default_path)
+        else:
+            self._refresh_variant_strip(selected)
 
         if GROUP_DEBUG_ENABLED and result.debug_text:
             print("Capture grouping debug:")
@@ -1619,10 +1655,11 @@ class MainWindow(QMainWindow):
             and lon_value is not None
             and has_lookup_target
         )
-        group = self._group_by_path.get(selected) if selected is not None else None
-        has_capture_set = group is not None and len(group.members) > 1
         self.preview_panel.skip_single_button.setEnabled(allow_actions)
-        self.preview_panel.skip_set_button.setEnabled(allow_actions and has_capture_set)
+        # Skip Set stays enabled for a single-image "set" too -- `_on_skip_set_selected`
+        # already falls back to skipping just that file, so the flow doesn't require
+        # switching to a different button depending on capture-set size.
+        self.preview_panel.skip_set_button.setEnabled(allow_actions)
 
     def _selected_has_embedded_gps(self) -> bool:
         """Return True when selected image already contains EXIF lat/lon values."""
@@ -1871,14 +1908,18 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_status(f"Skipped capture set ({len(group.members)} files)")
 
     def _on_variant_selected(self, image_path: Path) -> None:
-        """Switch preview to selected capture-set variant."""
+        """Switch preview to selected capture-set variant.
+
+        Goes straight to `_activate_selected_preview` rather than through
+        `_on_photo_selected` -- this is an explicit choice of file by the
+        user, so the ORF-default substitution must not run.
+        """
         if self._process_inflight or self._ai_inflight or self._save_inflight:
             return
         if image_path == self._selected_image_path:
             return
-        selected = self.source_panel.select_path(image_path, emit_signal=True)
-        if not selected:
-            self._on_photo_selected(image_path)
+        self.source_panel.select_path(image_path, emit_signal=False)
+        self._activate_selected_preview(image_path)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Stop thread pools cleanly before window teardown."""

@@ -1,6 +1,6 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 This document is the active implementation snapshot + next-step checklist.
 
@@ -28,7 +28,9 @@ See `docs/TESTING.md` for the automated test suite (`uv run pytest`) and what's 
 - [x] Skipping the selected tile advances focus to the next remaining tile in
   column order (falling back to the previous remaining tile if the skip removed
   the tail of the list) instead of always jumping back to the first tile
-  (`SourcePanel._next_selection_after_removal`).
+  (`grid_navigation.next_selection_after_removal`). Extended to anchor correctly
+  when the active selection is a hidden capture-set member rather than the
+  visible tile itself (`grid_navigation.resolve_removal_anchor`) — see below.
 - [x] Source panel directory tree is sized to a small default (no large wasted blank
   area between the tree and the thumbnail grid); thumbnail grid gets remaining
   vertical space via splitter stretch factors.
@@ -72,6 +74,33 @@ See `docs/TESTING.md` for the automated test suite (`uv run pytest`) and what's 
   straight at `NSWindow initWithContentRect:`/window-ordering calls; verified
   fix by timing `show()` against a real 1778-file SD card folder (window now
   appears in ~3s, vs. never appearing after 30+ seconds before).
+- [x] Preview default for a freshly selected capture set prefers its ORF member
+  over the JPEG representative (`main_window._default_preview_path`, reusing
+  `selection_scope.pick_ai_source_path`'s ORF preference), matching the
+  existing AI-source preference. Only applies on fresh entry into a set (tile
+  click, or once grouping resolves for the first file opened at folder load);
+  an explicit click on a variant-strip thumbnail always shows exactly that
+  file.
+- [x] Fixed: clicking a different variant under the preview (e.g. the ORF of a
+  stacked JPG+ORF pair) used to clear the left column's highlighted tile,
+  because the panel tracked selection by the literal active file rather than
+  the group's one visible tile. `SourcePanel` now keeps a
+  `member_to_visible_path` map (from `main_window._non_representative_paths_for_current_groups`)
+  and resolves highlighting and skip-focus through it
+  (`source_panel._apply_multi_selection_style`).
+- [x] Fixed: skipping a capture set while a non-representative variant was the
+  active preview selection used to reset focus to the first tile in the
+  entire column instead of advancing to a neighboring set — the removal logic
+  looked up the literal (hidden) selected path's index in the visible-tile
+  list and failed. Now resolved via `grid_navigation.resolve_removal_anchor`,
+  which maps a hidden member back to its group's visible tile before
+  computing the next focus target.
+- [x] "Skip Set" stays enabled for a single-image capture set (it falls back to
+  skipping just that file, same as `_on_skip_set_selected` already did
+  internally) instead of requiring "Skip" for sets of one.
+- [x] Skipped files persist across sessions per source folder (`QSettings`,
+  keyed by folder path), so re-opening the same SD card/folder keeps
+  previously skipped files out of the grid instead of forgetting on restart.
 
 ### Part 3 - EXIF read and mapping
 

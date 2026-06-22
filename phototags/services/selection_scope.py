@@ -32,15 +32,17 @@ def expand_to_capture_groups(
 
 
 def pick_ai_source_path(representative_path: Path, target_paths: Sequence[Path]) -> Path:
-    """Prefer an ORF in the target set over the JPEG representative for AI analysis.
+    """Prefer an ORF in the target set over the JPEG representative.
 
     Capture-group representative selection prefers a JPEG (see
-    `CaptureGroupService._pick_representative`) for thumbnail/preview purposes,
-    but an OM System Art Filter Bracket burst shares one unfiltered RAW capture
-    across several differently-filtered JPEG renders (monochrome, grainy film,
-    etc.). Sending one of those JPEGs to the AI skews the description/keywords
-    toward that filter instead of the actual scene, so prefer the ORF's
-    embedded preview when one is present in the set.
+    `CaptureGroupService._pick_representative`) for thumbnail/listing
+    purposes, but an OM System Art Filter Bracket burst shares one unfiltered
+    RAW capture across several differently-filtered JPEG renders (monochrome,
+    grainy film, etc.). Sending one of those JPEGs to the AI skews the
+    description/keywords toward that filter instead of the actual scene, so
+    prefer the ORF's embedded preview when one is present in the set. Also
+    used by `main_window._default_preview_path` to apply the same preference
+    when a freshly selected capture set first opens in the preview pane.
     """
     orf_candidates = sorted(
         (path for path in target_paths if path.suffix.casefold() == ".orf"),
