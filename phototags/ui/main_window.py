@@ -178,6 +178,7 @@ class MainWindow(QMainWindow):
         self.metadata_panel.save_set_button.clicked.connect(self._on_save_set_clicked)
         self.metadata_panel.process_single_button.clicked.connect(self._on_process_single_clicked)
         self.metadata_panel.process_set_button.clicked.connect(self._on_process_set_clicked)
+        self.metadata_panel.process_selection_button.clicked.connect(self._on_process_selection_clicked)
         self.metadata_panel.process_session_button.clicked.connect(self._on_process_session_clicked)
         self.metadata_panel.suggest_button.clicked.connect(self._on_ai_suggest_clicked)
         self.metadata_panel.suggest_gps_button.clicked.connect(self._on_gps_suggest_clicked)
@@ -283,6 +284,20 @@ class MainWindow(QMainWindow):
     def _is_manual_multi_target(self, selected_path: Path) -> bool:
         """Return True when a manual multi-selection (not capture grouping) is active for this path."""
         return len(self._multi_selected_paths) > 1 and selected_path in self._multi_selected_paths
+
+    def _expand_to_capture_groups(self, paths: tuple[Path, ...]) -> tuple[Path, ...]:
+        """Expand each path to its full capture-group membership, deduped.
+
+        A manual multi-selection in stacked view selects one representative
+        thumbnail per capture set; without this expansion, AI/GPS/save/process
+        actions would only touch those representative files and silently skip
+        the other members (e.g. the ORF) of each selected set.
+        """
+        expanded: list[Path] = []
+        for path in paths:
+            group = self._group_by_path.get(path)
+            expanded.extend(group.members if group is not None else (path,))
+        return tuple(self._dedupe_paths(expanded))
 
     def _non_representative_paths_for_current_groups(self) -> set[Path]:
         """Compute which currently-visible files are non-representative capture-set members.
@@ -588,7 +603,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_save_status("No file selected", is_error=True)
             return
         if self._is_manual_multi_target(selected):
-            paths = list(self._multi_selected_paths)
+            paths = list(self._expand_to_capture_groups(self._multi_selected_paths))
             self._start_save_scope(f"{len(paths)} selected images", paths)
             return
         group = self._group_by_path.get(selected)
@@ -754,6 +769,7 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_ai_status("No file selected", is_error=True)
             return
         representative_path, target_paths = self._ai_targets_for(selected_path)
+        ai_source_path = self._ai_source_path_for(representative_path, target_paths)
         model_name = self.metadata_panel.ai_model_name() or DEFAULT_PROVIDER_MODEL
         self.metadata_panel.set_ai_model_name(model_name)
 
@@ -792,7 +808,7 @@ class MainWindow(QMainWindow):
         signals.failed.connect(partial(self._on_ai_suggest_failed, request_id, job_id))
 
         task = AiSuggestTask(
-            representative_path=representative_path,
+            representative_path=ai_source_path,
             target_paths=target_paths,
             model_name=model_name,
             existing_keywords_by_path=existing_keywords_by_path,
@@ -1460,11 +1476,28 @@ class MainWindow(QMainWindow):
         priority over capture-group membership when active.
         """
         if self._is_manual_multi_target(selected_path):
-            return selected_path, self._multi_selected_paths
+            return selected_path, self._expand_to_capture_groups(self._multi_selected_paths)
         group = self._group_by_path.get(selected_path)
         if group is None:
             return selected_path, (selected_path,)
         return group.representative_path, tuple(group.members)
+
+    def _ai_source_path_for(self, representative_path: Path, target_paths: tuple[Path, ...]) -> Path:
+        """Prefer an ORF in the target set over the JPEG representative for AI analysis.
+
+        Capture-group representative selection prefers a JPEG (see
+        `CaptureGroupService._pick_representative`) for thumbnail/preview purposes,
+        but an OM System Art Filter Bracket burst shares one unfiltered RAW capture
+        across several differently-filtered JPEG renders (monochrome, grainy film,
+        etc.). Sending one of those JPEGs to the AI skews the description/keywords
+        toward that filter instead of the actual scene, so prefer the ORF's
+        embedded preview when one is present in the set.
+        """
+        orf_candidates = sorted(
+            (path for path in target_paths if path.suffix.casefold() == ".orf"),
+            key=lambda path: path.name.casefold(),
+        )
+        return orf_candidates[0] if orf_candidates else representative_path
 
     def _gps_target_paths(self, selected_path: Path) -> tuple[Path, ...]:
         """Return capture-set members for GPS/altitude apply actions.
@@ -1477,7 +1510,7 @@ class MainWindow(QMainWindow):
         different locations.
         """
         if self._is_manual_multi_target(selected_path):
-            return self._multi_selected_paths
+            return self._expand_to_capture_groups(self._multi_selected_paths)
         group = self._group_by_path.get(selected_path)
         if group is None:
             return (selected_path,)
@@ -1686,6 +1719,15 @@ class MainWindow(QMainWindow):
         group = self._group_by_path.get(selected)
         paths = list(group.members) if group is not None else [selected]
         self._start_process_scope("capture set", paths)
+
+    def _on_process_selection_clicked(self) -> None:
+        """Process and copy the current manual multi-selection, expanded to full capture sets."""
+        selected = self._selected_image_path
+        if selected is None or not self._is_manual_multi_target(selected):
+            self.metadata_panel.set_save_status("No multi-selection active", is_error=True)
+            return
+        paths = list(self._expand_to_capture_groups(self._multi_selected_paths))
+        self._start_process_scope(f"{len(paths)} selected images", paths)
 
     def _on_process_session_clicked(self) -> None:
         """Process and copy all remaining files in the current session view."""

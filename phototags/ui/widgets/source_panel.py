@@ -649,11 +649,17 @@ class SourcePanel(QWidget):
         full folder reload would do.
         """
         removed_keys = {str(path) for path in image_paths}
+        previous_visible_paths = self._visible_paths()
         self._current_image_paths = [
             path for path in self._current_image_paths if str(path) not in removed_keys
         ]
 
         was_selected = self._selected_path is not None and str(self._selected_path) in removed_keys
+        selected_index = (
+            previous_visible_paths.index(self._selected_path)
+            if was_selected and self._selected_path in previous_visible_paths
+            else None
+        )
 
         for key in removed_keys:
             tile = self._thumb_tiles.pop(key, None)
@@ -685,11 +691,36 @@ class SourcePanel(QWidget):
         self._apply_multi_selection_style()
 
         if was_selected:
-            next_path = self._current_image_paths[0]
+            if selected_index is not None:
+                next_path = self._next_selection_after_removal(
+                    previous_visible_paths, selected_index, removed_keys
+                )
+            else:
+                next_path = self._current_image_paths[0]
             self._set_selected_path(next_path)
             self.photo_selected.emit(next_path)
         else:
             self.selection_changed.emit(self._ordered_selection())
+
+    def _next_selection_after_removal(
+        self,
+        previous_visible_paths: list[Path],
+        selected_index: int,
+        removed_keys: set[str],
+    ) -> Path:
+        """Pick the next remaining item after a skip, advancing forward in the column first.
+
+        Falls back to the nearest remaining item before the removed selection
+        when the skip removed the tail of the list, so focus never jumps back
+        to the first item in the column.
+        """
+        for path in previous_visible_paths[selected_index + 1 :]:
+            if str(path) not in removed_keys:
+                return path
+        for path in reversed(previous_visible_paths[:selected_index]):
+            if str(path) not in removed_keys:
+                return path
+        return self._current_image_paths[0]
 
     def reload_current_folder(self) -> None:
         """Reload thumbnails for the current folder path."""

@@ -23,6 +23,10 @@ This document is the active implementation snapshot + next-step checklist.
 - [x] Skip (single image, capture set, or auto-skip after successful process) removes
   just the affected tile(s) from the grid in place; it no longer reloads the whole
   folder or re-decodes thumbnails that are already loaded.
+- [x] Skipping the selected tile advances focus to the next remaining tile in
+  column order (falling back to the previous remaining tile if the skip removed
+  the tail of the list) instead of always jumping back to the first tile
+  (`SourcePanel._next_selection_after_removal`).
 - [x] Source panel directory tree is sized to a small default (no large wasted blank
   area between the tree and the thumbnail grid); thumbnail grid gets remaining
   vertical space via splitter stretch factors.
@@ -100,7 +104,12 @@ Implementation note:
 
 ### Part 6 - Process & move
 
-- [x] Process scopes: `Single Image`, `Capture Set`, `Session`.
+- [x] Process scopes: `Single Image`, `Capture Set`, `Current Selection`, `Session`.
+  `Current Selection` (`MetadataPanel.process_selection_button`,
+  `_on_process_selection_clicked`) processes the active manual multi-selection,
+  expanded to each selected file's full capture-group membership (same
+  expansion as Save/AI/GPS below) — only enabled while a manual multi-selection
+  is active.
 - [x] Copy-first workflow (no SD-card deletion).
 - [x] Destination routing:
   - ORF -> `/Users/bsmi067/Pictures/DxO/<M Month>/<DD>/`
@@ -119,6 +128,10 @@ Implementation note:
     from "largest file" after observing OM System Art Filter Bracket bursts pick a
     heavily-processed (e.g. monochrome/grainy) render as representative, since those
     often compress larger than the plain render of the same shot.
+  - Filename order is not a reliable proxy for "plain render first" in every burst
+    (a heavily-filtered, e.g. monochrome, JPEG can still sort first alphabetically),
+    so this representative is still used for thumbnail/preview/save ordering but
+    *not* for AI analysis — see `_ai_source_path_for` below.
 - [x] Variant strip in preview panel and selection sync with source panel.
 - [x] Group size indicator in source thumbnails.
 - [x] Capture grouping reads EXIF in filename-ordered batches (`batch_image_paths`)
@@ -142,19 +155,34 @@ Implementation note:
   going through Qt — see `eval/RESULTS.md` for the 15-model bake-off this
   produced.
 - [x] Group-aware AI apply (one pass on representative, apply editable drafts to all set members).
+- [x] AI image-source selection prefers an ORF over the JPEG representative when one
+  is present in the target set (`main_window._ai_source_path_for`). The
+  representative JPEG can be a heavily-filtered render (monochrome, grainy film,
+  etc.) from an Art Filter Bracket burst sharing one unfiltered RAW capture;
+  sending that JPEG to the AI skewed the description/keywords toward the filter
+  instead of the actual scene. This only changes which file's preview is sent to
+  the AI — capture-group `representative_path` (thumbnail/preview/save ordering)
+  is untouched.
 - [x] Manual multi-select in the left thumbnail nav (`SourcePanel`): cmd-click
   toggles a tile in/out of selection, shift-click selects a contiguous range,
   plain click resets to single-select. When 2+ tiles are manually selected,
   "Suggest Description + Keywords", "Save Capture Set" (relabeled
-  "Save Selected (N)"), and GPS/altitude apply (`_gps_target_paths`) all act on
-  exactly that set instead of the automatic 1-second capture group — useful
-  for bursts shot seconds apart from the same spot that the timestamp-based
-  grouping doesn't merge. `AiSuggestPayload.expand_to_group=False` is what
-  stops a manual selection from being silently re-expanded to a
-  representative's capture-group siblings on AI apply. GPS/altitude apply
-  already skips any file with its own embedded GPS/altitude per-file, so it's
-  safe even across a manual selection spanning different locations. Skip-set
-  remains capture-group-only.
+  "Save Selected (N)"), "Process & Move" -> "Current Selection", and
+  GPS/altitude apply (`_gps_target_paths`) all act on the selected files
+  *expanded to each one's full capture-group membership*
+  (`_expand_to_capture_groups`) rather than the bare selected paths — needed
+  because stacked view only shows one representative tile per capture set, so
+  selecting representatives of several sets previously applied AI/GPS/save
+  results only to those representative files and silently skipped the other
+  set members (e.g. the ORF). A path with no capture group (true standalone
+  selection, e.g. a same-spot burst the timestamp grouping didn't merge) still
+  expands to just itself, so that original ad hoc use case is unchanged.
+  `AiSuggestPayload.expand_to_group=False` still applies (no *additional*
+  expansion via the AI payload's representative-group lookup), since the
+  manual-selection paths passed in are already fully expanded up front.
+  GPS/altitude apply already skips any file with its own embedded
+  GPS/altitude per-file, so it's safe even across a selection spanning
+  different locations. Skip-set remains capture-group-only.
 - [x] Model picker in UI: editable `QComboBox` (`MetadataPanel.ai_model_edit`),
   defaulting to `ollama:qwen3.6:35b`, pre-populated with `RECOMMENDED_MODELS`
   (`ai_suggestion_service.py`) ordered by the `eval/RESULTS.md` bake-off. Still

@@ -279,6 +279,11 @@ class MetadataPanel(QWidget):
         self.process_set_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         process_row.addWidget(self.process_set_button, 1)
 
+        self.process_selection_button = QPushButton("Current Selection")
+        self.process_selection_button.setEnabled(False)
+        self.process_selection_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        process_row.addWidget(self.process_selection_button, 1)
+
         self.process_session_button = QPushButton("Session")
         self.process_session_button.setEnabled(False)
         self.process_session_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -477,6 +482,7 @@ class MetadataPanel(QWidget):
         """Enable/disable all process action buttons."""
         self.process_single_button.setEnabled(enabled)
         self.process_set_button.setEnabled(enabled)
+        self.process_selection_button.setEnabled(enabled)
         self.process_session_button.setEnabled(enabled)
 
     def set_suggest_button_enabled(self, enabled: bool) -> None:
