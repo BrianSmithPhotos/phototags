@@ -393,7 +393,7 @@ Use this when importing a new full-history timeline export.
 
 ### Automated test coverage
 
-- [x] Initial pytest suite (106 tests, `tests/services/`) covering pure logic
+- [x] Initial pytest suite (133 tests, `tests/services/`) covering pure logic
   (`auto_metadata`, `capture_group_service`, `rename_service`,
   `exif_service` field-mapping/GPS-parsing/art-filter-fallback,
   `ai_suggestion_service` JSON-extraction/keyword-normalize/refinement
@@ -403,15 +403,16 @@ Use this when importing a new full-history timeline export.
   ORF-preview-default redirect was silently collapsing an active
   multi-selection, and the follow-on shift-click regression where that same
   redirect left the range anchor on a hidden capture-set member — and
-  `grid_navigation.py`) plus `subprocess`/`urllib`-boundary-mocked tests for
+  `grid_navigation.py`), `subprocess`/`urllib`-boundary-mocked tests for
   `ExifService.read_full_metadata`, `MetadataWriteService`,
   `AiSuggestionService.suggest_for_image`/`_read_previewable_image_bytes`,
-  `ElevationLookupService`, and `ReverseGeocodeService`.
+  `ElevationLookupService` (including the altitude-lookup cache), and
+  `ReverseGeocodeService`, plus `timeline_location_service.py` coordinate/
+  timestamp parsing and `suggest_for_capture` end-to-end against a real
+  temp SQLite cache.
   See `docs/TESTING.md` for what's covered and the prioritized list of what
-  to add next (`subprocess`/`urllib`-mocked tests for the I/O-shelled
-  services, then `timeline_location_service`/`process_move_service` pure
-  logic, then integration tests, then `pytest-qt` widget tests only if
-  needed).
+  to add next (`process_move_service.py` destination-routing pure logic,
+  then integration tests, then `pytest-qt` widget tests only if needed).
 
 ### Grouping quality refinement
 

@@ -65,24 +65,16 @@ it embedded where it can only be tested by driving the whole UI.
 | `test_metadata_write_service.py` | `metadata_write_service.py`: `write_description_keywords` against a mocked `subprocess.run` (success, exiftool-command GPS argument construction, write failure restoring the `_original` backup file), GPS validation error paths (missing longitude, out-of-range latitude) | Metadata writes are the one operation that mutates files on disk; a wrong command argument or a skipped backup-restore on failure means silent data loss or corruption. |
 | `test_elevation_lookup_service.py` | `elevation_lookup_service.py`: USGS EPQS response parsing (direct `value` field, nested `Elevation_Query` shape), no-usable-value/invalid-JSON/network-error failure paths, in-memory cache hit on repeated nearby coordinates and no-cache-on-failure, via a mocked `urllib.request.urlopen` | Feeds GPS altitude on every apply now (timeline altitude is no longer trusted — see `docs/PLAN.md`'s Altitude policy); a parsing regression silently fills no altitude, and a caching regression would either serve stale data or hammer the USGS endpoint on every apply. |
 | `test_reverse_geocode_service.py` | `reverse_geocode_service.py`: Nominatim response parsing (city/county/state field fallback chains, `keyword_tokens`/`context_text` formatting), no-address/no-usable-fields/network-error failure paths, via a mocked `urllib.request.urlopen` | Feeds location keywords and AI prompt context; a parsing regression silently drops location data instead of raising. |
+| `test_timeline_location_service.py` | `timeline_location_service.py`: coordinate/timestamp parsing (`_parse_lat_lon`, `_parse_exif_capture_timestamp`, `_parse_iso_timestamp`), record-key determinism (`_build_record_key`), `rawSignals`/`semanticSegments` position extraction and dedup (`_position_from_raw_signal`, `_position_from_timeline_path`, `_parse_timeline_positions`), and `suggest_for_capture` end-to-end against a real temp SQLite cache + Timeline JSON fixture (nearest-match-in-window, outside-window, source-type tie-break, missing timeline file) | This is the GPS-suggestion matching logic; a parsing or ordering regression here silently applies the wrong coordinates (or none) to a photo's GPS fields. |
 
-106 tests, all currently passing, ~0.09s total.
+133 tests, all currently passing, ~0.14s total.
 
 ## Future test batches
 
 Roughly in priority order — highest regression risk and lowest setup cost
 first.
 
-### 1. `timeline_location_service.py`
-
-Mostly I/O (SQLite cache, JSON parsing of the Google Timeline export) but the
-matching logic is pure once you have parsed positions:
-`_parse_lat_lon`, `_build_record_key`, `_parse_exif_capture_timestamp`,
-`_parse_iso_timestamp`. Test these directly; for `suggest_for_capture`
-end-to-end, build a temp SQLite file with `_ensure_schema` + a few inserted
-rows rather than going through real Timeline JSON ingestion.
-
-### 2. `process_move_service.py` destination routing
+### 1. `process_move_service.py` destination routing
 
 Routing rules (ORF vs JPEG destination subfolder, date-folder naming) look
 pure from the signatures — confirm there's no direct filesystem write inside
@@ -91,7 +83,7 @@ checksum-verify step, and test the routing decision as pure logic. Don't unit
 test the actual file copy/checksum verification here — that's an integration
 test (see below).
 
-### 3. Integration-level tests (separate, slower tier)
+### 2. Integration-level tests (separate, slower tier)
 
 Once the above pure-logic coverage exists, the highest-value next step is a
 small number of tests that exercise real file I/O end-to-end without Qt:
@@ -105,7 +97,7 @@ expected destination with the expected checksum behavior. Mark these
 `@pytest.mark.integration` and keep them out of the default fast run if they
 turn out to need a real `exiftool` binary on `PATH`.
 
-### 4. UI/widget tests (last, and only if regressions start happening there)
+### 3. UI/widget tests (last, and only if regressions start happening there)
 
 Testing `main_window.py` or `source_panel.py` directly requires
 `pytest-qt` and a `QApplication` (`QT_QPA_PLATFORM=offscreen` for CI). Given
