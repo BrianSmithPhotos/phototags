@@ -57,37 +57,20 @@ it embedded where it can only be tested by driving the whole UI.
 |---|---|---|
 | `test_auto_metadata.py` | `auto_metadata.py`: keyword parsing/merging/dedup, `sooc` token rule, art-filter description note | Runs on every save/process; a dedup or string-formatting bug silently corrupts metadata written to disk. |
 | `test_capture_group_service.py` | `capture_group_service.py`: same-second bucketing, representative selection (JPEG-over-ORF, filename order), missing-datetime singleton handling, `batch_image_paths` same-stem boundary protection | Capture grouping decides what "Save Capture Set" / "Process Capture Set" / AI-apply actually touch — get this wrong and the wrong files get written or skipped. |
-| `test_selection_scope.py` | `selection_scope.py` (new): expanding a manual multi-selection to full capture-group membership, ORF-preference for AI source image | Direct regression coverage for this session's bug #1 (selection not expanding to full sets) and #3 (monochrome JPEG sent to AI instead of the ORF). |
+| `test_selection_scope.py` | `selection_scope.py`: expanding a manual multi-selection to full capture-group membership, ORF-preference for AI source image and preview default, multi-selection guard on the preview redirect, range-anchor resolution and contiguous-range selection for shift-click | Direct regression coverage for selection not expanding to full sets, monochrome JPEG sent to AI instead of the ORF, cmd-click multi-select being silently collapsed by the ORF-preview redirect, and shift-click range-select silently collapsing to one tile when the preview redirect left the range anchor on a hidden capture-set member. |
 | `test_grid_navigation.py` | `grid_navigation.py`: next-tile-after-skip, including multi-tile skips and the all-removed edge case; `resolve_removal_anchor`'s mapping of a hidden capture-set member back to its visible tile for both partial-set and whole-set removal | Regression coverage for skip focus jumping back to the first tile instead of advancing, including when the active selection was a hidden ORF/JPG variant rather than the visible tile. |
 | `test_rename_service.py` | `rename_service.py`: filename pattern assembly, sanitization, collision-suffixing, missing-field fallbacks | Renaming runs on every processed file; a sanitization or collision bug means silent overwrites or invalid filenames on disk. |
+| `test_exif_service.py` | `exif_service.py`: `map_for_ui` field mapping, GPS DMS/decimal coordinate parsing and range validation, altitude formatting, `ArtFilterEffect`/`PictureMode`/`StackedImage`/`MultipleExposureMode` fallback chain, aperture formatting | These mapping/parsing rules feed the metadata panel and the rename/AI flows downstream; a wrong fallback or a coordinate-parsing bug shows the wrong (or no) value in the UI without erroring. |
+| `test_ai_suggestion_service.py` | `ai_suggestion_service.py`: JSON extraction from code-fenced/prose-wrapped model responses, keyword normalization/dedup, keyword merging, subject-crop-refinement trigger logic, word-boundary subject matching in descriptions | Parses and validates the AI model's response and decides whether to spend a second (refinement) request; a regression here either silently drops valid suggestions or triggers unnecessary refinement passes. |
 
-41 tests, all currently passing, ~0.03s total.
+78 tests, all currently passing, ~0.07s total.
 
 ## Future test batches
 
 Roughly in priority order — highest regression risk and lowest setup cost
 first.
 
-### 1. Pure helpers still inside `ExifService` and `AiSuggestionService`
-
-Not every method on these classes touches `subprocess`. The mapping/parsing
-methods are already pure and just need a constructed input:
-
-- `ExifService.map_for_ui(metadata: dict) -> ExifUiData` (`exif_service.py`) —
-  feed it hand-built exiftool-shaped dicts (the kind of dict
-  `read_full_metadata` would normally return) and assert the mapped fields,
-  especially `_parse_dms_coordinate`, `_art_filter_token`, and
-  `_gps_altitude_text`, which all have nontrivial parsing/fallback rules.
-- `AiSuggestionService._extract_json_object`, `_normalize_keywords`,
-  `_merge_keywords`, `_needs_subject_crop_refinement`,
-  `_description_mentions_subject` (`ai_suggestion_service.py`) — these parse
-  and validate the model's JSON response and decide whether to run the
-  crop-refinement pass. They're private methods, so import the module and
-  call `service._extract_json_object(...)` directly (acceptable for
-  whitebox unit tests of intentionally-private parsing logic); don't go
-  through `suggest_for_image`, which shells out.
-
-### 2. `subprocess`/`urllib`-backed services, via mocking the boundary
+### 1. `subprocess`/`urllib`-backed services, via mocking the boundary
 
 For `ExifService.read_full_metadata`, `MetadataWriteService`, and
 `AiSuggestionService.suggest_for_image`/`_read_previewable_image_bytes`
@@ -100,7 +83,7 @@ correctly handle exiftool/the API's output shape" without testing exiftool
 or the network itself. Add a `tests/services/conftest.py` fixture (e.g.
 `fake_exiftool_run`) once two or more test files need the same fake.
 
-### 3. `timeline_location_service.py`
+### 2. `timeline_location_service.py`
 
 Mostly I/O (SQLite cache, JSON parsing of the Google Timeline export) but the
 matching logic is pure once you have parsed positions:
@@ -109,7 +92,7 @@ matching logic is pure once you have parsed positions:
 end-to-end, build a temp SQLite file with `_ensure_schema` + a few inserted
 rows rather than going through real Timeline JSON ingestion.
 
-### 4. `process_move_service.py` destination routing
+### 3. `process_move_service.py` destination routing
 
 Routing rules (ORF vs JPEG destination subfolder, date-folder naming) look
 pure from the signatures — confirm there's no direct filesystem write inside
@@ -118,20 +101,20 @@ checksum-verify step, and test the routing decision as pure logic. Don't unit
 test the actual file copy/checksum verification here — that's an integration
 test (see below).
 
-### 5. Integration-level tests (separate, slower tier)
+### 4. Integration-level tests (separate, slower tier)
 
 Once the above pure-logic coverage exists, the highest-value next step is a
 small number of tests that exercise real file I/O end-to-end without Qt:
 build a `tmp_path` with a couple of fake JPEG/ORF files (don't need real
 image bytes for metadata writes — exiftool will error on garbage image data,
 so these specifically need either tiny real sample images checked into
-`tests/fixtures/` or to mock at the exiftool boundary as in #2), run
+`tests/fixtures/` or to mock at the exiftool boundary as in #1), run
 `ProcessMoveService` against them, and assert the files landed at the
 expected destination with the expected checksum behavior. Mark these
 `@pytest.mark.integration` and keep them out of the default fast run if they
 turn out to need a real `exiftool` binary on `PATH`.
 
-### 6. UI/widget tests (last, and only if regressions start happening there)
+### 5. UI/widget tests (last, and only if regressions start happening there)
 
 Testing `main_window.py` or `source_panel.py` directly requires
 `pytest-qt` and a `QApplication` (`QT_QPA_PLATFORM=offscreen` for CI). Given

@@ -379,14 +379,22 @@ Use this when importing a new full-history timeline export.
 
 ### Automated test coverage
 
-- [x] Initial pytest suite (38 tests, `tests/services/`) covering pure logic only:
-  `auto_metadata`, `capture_group_service`, `rename_service`, and two new
-  service modules extracted from `main_window.py`/`source_panel.py` for
-  testability: `selection_scope.py` and `grid_navigation.py`. See
-  `docs/TESTING.md` for what's covered and the prioritized list of what to add
-  next (pure helpers still embedded in `ExifService`/`AiSuggestionService`,
-  then `subprocess`/`urllib`-mocked tests for the I/O-shelled services, then
-  integration tests, then `pytest-qt` widget tests only if needed).
+- [x] Initial pytest suite (78 tests, `tests/services/`) covering pure logic
+  only: `auto_metadata`, `capture_group_service`, `rename_service`,
+  `exif_service` (`map_for_ui` field mapping/GPS parsing/art-filter fallback
+  chain), `ai_suggestion_service` (JSON extraction, keyword
+  normalize/merge, subject-crop-refinement decision), and two service
+  modules extracted from `main_window.py`/`source_panel.py` for
+  testability: `selection_scope.py` (also covers the cmd/shift-click
+  multi-select regression where the ORF-preview-default redirect was
+  silently collapsing an active multi-selection, and the follow-on
+  shift-click regression where that same redirect left the range anchor on
+  a hidden capture-set member) and `grid_navigation.py`.
+  See `docs/TESTING.md` for what's covered and the prioritized list of what
+  to add next (`subprocess`/`urllib`-mocked tests for the I/O-shelled
+  services, then `timeline_location_service`/`process_move_service` pure
+  logic, then integration tests, then `pytest-qt` widget tests only if
+  needed).
 
 ### Grouping quality refinement
 

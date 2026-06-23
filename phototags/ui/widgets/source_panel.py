@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from phototags.services.grid_navigation import resolve_removal_anchor
+from phototags.services.selection_scope import range_between, resolve_range_anchor
 from phototags.ui.styles import (
     ACCENT_CYAN,
     BROWN_TEXT,
@@ -225,6 +226,11 @@ class SourcePanel(QWidget):
     def current_image_paths(self) -> list[Path]:
         """Return image paths currently displayed in the thumbnail grid."""
         return list(self._current_image_paths)
+
+    @property
+    def has_multi_selection(self) -> bool:
+        """Return whether more than one tile is part of the active cmd/shift-click selection."""
+        return len(self._multi_selected_paths) > 1
 
     def _build_ui(self) -> None:
         panel = QFrame()
@@ -493,7 +499,9 @@ class SourcePanel(QWidget):
         is_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
 
         if is_shift and self._range_anchor_path is not None:
-            self._multi_selected_paths = self._range_between(self._range_anchor_path, image_path)
+            self._multi_selected_paths = range_between(
+                self._range_anchor_path, image_path, self._visible_paths()
+            )
         elif is_cmd:
             if image_path in self._multi_selected_paths:
                 self._multi_selected_paths.discard(image_path)
@@ -509,16 +517,6 @@ class SourcePanel(QWidget):
         self._update_file_count_label()
         self.photo_selected.emit(image_path)
         self.selection_changed.emit(self._ordered_selection())
-
-    def _range_between(self, anchor_path: Path, image_path: Path) -> set[Path]:
-        """Return the contiguous set of visible paths between anchor and image_path."""
-        visible_paths = self._visible_paths()
-        if anchor_path not in visible_paths or image_path not in visible_paths:
-            return {image_path}
-        start = visible_paths.index(anchor_path)
-        end = visible_paths.index(image_path)
-        low, high = min(start, end), max(start, end)
-        return set(visible_paths[low : high + 1])
 
     def _ordered_selection(self) -> tuple[Path, ...]:
         """Return the current multi-selection in on-screen display order."""
@@ -549,10 +547,18 @@ class SourcePanel(QWidget):
         self.file_count_label.setText(base)
 
     def _set_selected_path(self, image_path: Path) -> None:
-        """Set a single active path programmatically, collapsing any multi-selection."""
+        """Set a single active path programmatically, collapsing any multi-selection.
+
+        The range anchor must stay on a visible tile: `image_path` here can be a
+        hidden capture-set member (e.g. the ORF-preview-default redirect in
+        `main_window._on_photo_selected` re-targeting a JPEG representative to
+        its hidden ORF sibling). `range_between` looks the anchor up in
+        `_visible_paths()`, so anchoring on a hidden path makes the next
+        shift-click silently fail to range-select and collapse to one tile.
+        """
         self._selected_path = image_path
         self._multi_selected_paths = {image_path}
-        self._range_anchor_path = image_path
+        self._range_anchor_path = resolve_range_anchor(image_path, self._member_to_visible_path)
         self._apply_multi_selection_style()
         self._update_file_count_label()
         self.selection_changed.emit(self._ordered_selection())

@@ -21,7 +21,11 @@ from phototags.services.metadata_write_service import MetadataWriteService
 from phototags.services.process_move_service import ProcessMoveService
 from phototags.services.reverse_geocode_service import ReverseGeocodeResult, ReverseGeocodeService
 from phototags.services.rename_service import RenameContext, RenameService
-from phototags.services.selection_scope import expand_to_capture_groups, pick_ai_source_path
+from phototags.services.selection_scope import (
+    expand_to_capture_groups,
+    pick_ai_source_path,
+    resolve_preview_redirect,
+)
 from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
 from phototags.services.timeline_sync_service import TimelineSyncService
 from phototags.ui.styles import WINDOW_BACKGROUND
@@ -231,26 +235,13 @@ class MainWindow(QMainWindow):
     def _on_photo_selected(self, image_path: Path | None) -> None:
         """Handle a fresh capture-set/tile selection, defaulting its preview to the ORF member."""
         if image_path is not None:
-            default_path = self._default_preview_path(image_path)
+            default_path = resolve_preview_redirect(
+                image_path, self._group_by_path, self.source_panel.has_multi_selection
+            )
             if default_path != image_path:
                 self.source_panel.select_path(default_path, emit_signal=False)
                 image_path = default_path
         self._activate_selected_preview(image_path)
-
-    def _default_preview_path(self, image_path: Path) -> Path:
-        """Prefer the ORF member when freshly entering a capture set at its representative.
-
-        Mirrors `pick_ai_source_path`'s ORF preference (an Art Filter Bracket
-        burst's JPEG representative is a filtered render, not the plain
-        scene), applied here so the preview defaults to it too. Only applies
-        when `image_path` is exactly the group's representative -- an
-        explicit variant-strip click already names the file the user wants
-        and must not be overridden.
-        """
-        group = self._group_by_path.get(image_path)
-        if group is None or group.representative_path != image_path:
-            return image_path
-        return pick_ai_source_path(image_path, group.members)
 
     def _activate_selected_preview(self, image_path: Path | None) -> None:
         """Start background preview loading for selected photo."""
@@ -565,9 +556,15 @@ class MainWindow(QMainWindow):
 
         # The very first file opened at folder-load time is often selected before this
         # batch's grouping data exists, so it never got a chance to default to its
-        # group's ORF member (see `_default_preview_path`); re-check now that it can.
+        # group's ORF member (see `resolve_preview_redirect`); re-check now that it can.
         selected = self._selected_image_path
-        default_path = self._default_preview_path(selected) if selected is not None else None
+        default_path = (
+            resolve_preview_redirect(
+                selected, self._group_by_path, self.source_panel.has_multi_selection
+            )
+            if selected is not None
+            else None
+        )
         if default_path is not None and default_path != selected:
             self.source_panel.select_path(default_path, emit_signal=False)
             self._activate_selected_preview(default_path)
