@@ -46,8 +46,6 @@ class Palette:
     tile_border: str
     thumb_placeholder_border: str
     thumb_placeholder_bg: str
-    altitude_unreliable_text: str
-    altitude_unreliable_bg: str
     button_disabled_bg: str
     button_disabled_text: str
     error_text: str
@@ -71,8 +69,6 @@ LIGHT_PALETTE = Palette(
     tile_border="#d6d2ce",
     thumb_placeholder_border="#e8e4df",
     thumb_placeholder_bg="#f8f6f4",
-    altitude_unreliable_text="#94867a",
-    altitude_unreliable_bg="#f4eee7",
     button_disabled_bg="#d7ccc6",
     button_disabled_text="#f6f3f1",
     error_text="#c84d3a",
@@ -99,8 +95,6 @@ DARK_PALETTE = Palette(
     tile_border="#46484a",
     thumb_placeholder_border="#3d3f41",
     thumb_placeholder_bg="#343638",
-    altitude_unreliable_text="#c9bdae",
-    altitude_unreliable_bg="#332f2a",
     button_disabled_bg="#3a3b3d",
     button_disabled_text="#7a7a7a",
     error_text="#e8705a",
@@ -136,8 +130,6 @@ TILE_BG_SELECTED = _ACTIVE_PALETTE.tile_bg_selected
 TILE_BORDER = _ACTIVE_PALETTE.tile_border
 THUMB_PLACEHOLDER_BORDER = _ACTIVE_PALETTE.thumb_placeholder_border
 THUMB_PLACEHOLDER_BG = _ACTIVE_PALETTE.thumb_placeholder_bg
-ALTITUDE_UNRELIABLE_TEXT = _ACTIVE_PALETTE.altitude_unreliable_text
-ALTITUDE_UNRELIABLE_BG = _ACTIVE_PALETTE.altitude_unreliable_bg
 BUTTON_DISABLED_BG = _ACTIVE_PALETTE.button_disabled_bg
 BUTTON_DISABLED_TEXT = _ACTIVE_PALETTE.button_disabled_text
 ERROR_TEXT = _ACTIVE_PALETTE.error_text

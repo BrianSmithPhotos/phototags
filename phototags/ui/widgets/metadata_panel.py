@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
@@ -22,8 +21,6 @@ from PySide6.QtWidgets import (
 from phototags.services.ai_suggestion_service import RECOMMENDED_MODELS
 from phototags.ui.styles import (
     ACCENT_CYAN,
-    ALTITUDE_UNRELIABLE_BG,
-    ALTITUDE_UNRELIABLE_TEXT,
     BROWN_TEXT,
     BUTTON_DISABLED_BG,
     BUTTON_DISABLED_TEXT,
@@ -41,8 +38,6 @@ class MetadataPanel(QWidget):
     TECHNICAL_WIDE_VALUE_WIDTH = 360
     TECHNICAL_VALUE_HEIGHT = 26
     PANEL_FIXED_WIDTH = TECHNICAL_WIDE_VALUE_WIDTH + 200
-    GPS_ALTITUDE_UNRELIABLE_COLOR = ALTITUDE_UNRELIABLE_TEXT
-    GPS_ALTITUDE_UNRELIABLE_BACKGROUND = ALTITUDE_UNRELIABLE_BG
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -202,10 +197,6 @@ class MetadataPanel(QWidget):
         gps_button_row.addWidget(self.apply_gps_button, 1)
 
         layout.addLayout(gps_button_row)
-
-        self.auto_altitude_lookup_check = QCheckBox("Auto lookup altitude when missing")
-        self.auto_altitude_lookup_check.setChecked(False)
-        layout.addWidget(self.auto_altitude_lookup_check)
 
         gps_form = QFormLayout()
         gps_form.setSpacing(6)
@@ -551,10 +542,6 @@ class MetadataPanel(QWidget):
         """Return current GPS altitude text."""
         return self.gps_altitude_edit.text().strip()
 
-    def auto_altitude_lookup_enabled(self) -> bool:
-        """Return whether auto altitude lookup is enabled."""
-        return self.auto_altitude_lookup_check.isChecked()
-
     def set_gps_fields(
         self,
         *,
@@ -566,24 +553,6 @@ class MetadataPanel(QWidget):
         self.gps_latitude_edit.setText(latitude)
         self.gps_longitude_edit.setText(longitude)
         self.gps_altitude_edit.setText(altitude)
-        self.set_gps_altitude_unreliable(False)
-
-    def set_gps_altitude_unreliable(self, unreliable: bool, source_type: str = "") -> None:
-        """Dim altitude field when value comes from a less-reliable timeline source."""
-        if unreliable:
-            self.gps_altitude_edit.setStyleSheet(
-                (
-                    f"color: {self.GPS_ALTITUDE_UNRELIABLE_COLOR}; "
-                    f"background: {self.GPS_ALTITUDE_UNRELIABLE_BACKGROUND};"
-                )
-            )
-            source = source_type.strip() or "timeline"
-            self.gps_altitude_edit.setToolTip(
-                f"Altitude from {source} source is approximate and may be inaccurate."
-            )
-            return
-        self.gps_altitude_edit.setStyleSheet("")
-        self.gps_altitude_edit.setToolTip("")
 
     def clear_ai_suggestions(self) -> None:
         """Clear AI suggestion output."""

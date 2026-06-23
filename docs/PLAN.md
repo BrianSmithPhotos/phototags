@@ -308,8 +308,7 @@ Implementation note:
 - [x] Right-panel actions:
   - `Suggest GPS From Timeline`
   - `Apply Suggested GPS`
-  - `Lookup Altitude`
-  - `Auto lookup altitude when missing`
+  - `Lookup Altitude For Set`
 - [x] Editable `Lat`, `Lon`, `Alt (m)` fields.
 - [x] Wrapped status area with additional space for long suggestions.
 
@@ -317,14 +316,31 @@ Implementation note:
 
 - [x] Existing camera EXIF GPS fields are preserved and not overwritten.
 - [x] Existing EXIF altitude is preserved and lookup will not overwrite it.
-- [x] Timeline altitude from non-`GPS` sources (for example `WIFI`) is still applied, but visually marked unreliable (dimmed + tooltip).
-- [x] If timeline altitude is missing, optional elevation lookup can populate altitude.
+- [x] Fixed: many timeline `altitudeMeters` readings are implausible (checked
+  `gps/Timeline.json` directly — 61% of raw signal positions with altitude are
+  negative, down to -159m, including ~37% of `GPS`-source-tagged points, not
+  just `WIFI`/`CELL`). Phone GPS chips have much worse vertical than horizontal
+  accuracy, and WIFI-based altitude is a coarse estimate with no real
+  altimetry, so source-type alone (the old "unreliable" dimmed-field flag) was
+  not a reliable enough signal. Timeline `altitudeMeters` is no longer applied
+  at all: `Apply Suggested GPS` now always leaves altitude blank and
+  unconditionally triggers `ElevationLookupService` (USGS ground elevation)
+  for the applied capture set instead. Removed: the "Auto lookup altitude when
+  missing" checkbox (lookup is no longer conditional), `set_gps_altitude_unreliable`
+  dimmed-field styling, and the `_gps_altitude_unreliable_by_path`/
+  `_gps_altitude_source_by_path` tracking in `main_window.py`.
 
 ### Elevation fallback
 
 - [x] `ElevationLookupService` added (USGS EPQS endpoint).
-- [x] Manual lookup supported from current editable lat/lon.
-- [x] Optional automatic lookup after GPS apply when altitude is missing.
+- [x] Manual lookup supported from current editable lat/lon
+  (`Lookup Altitude For Set`, for backfilling sets that still have no altitude).
+- [x] Automatic lookup now runs unconditionally after every `Apply Suggested GPS`
+  (see Altitude policy above), not just when timeline altitude was missing.
+- [x] In-memory cache keyed by lat/lon rounded to 4 decimal places (~11m), since
+  altitude lookup now runs on every GPS apply rather than only as a manual
+  fallback — avoids re-querying USGS for repeat capture sets at the same
+  shooting location within one session. Failed lookups are not cached.
 
 ## 4. Privacy and Repo Hygiene
 
@@ -356,18 +372,16 @@ Use this when importing a new full-history timeline export.
 - [ ] For files with existing EXIF lat/lon, confirm timeline apply is disabled/skipped.
 - [ ] For files with existing EXIF altitude, confirm lookup does not overwrite altitude.
 
-### Altitude reliability behavior
-
-- [ ] Confirm `GPS` source altitude appears normal (not dimmed).
-- [ ] Confirm non-`GPS` source altitude (for example `WIFI`) is dimmed and tooltip-marked unreliable.
-- [ ] Confirm manual edit of altitude clears the unreliable styling.
-
 ### Elevation lookup behavior
 
-- [ ] With missing altitude and valid lat/lon, confirm `Lookup Altitude` fills altitude.
-- [ ] With auto lookup enabled and missing timeline altitude, confirm lookup auto-runs after apply.
+- [ ] Confirm `Apply Suggested GPS` always leaves altitude blank initially, then
+  fills it from the USGS elevation lookup shortly after (no timeline altitude
+  is ever applied).
 - [ ] Validate at least one known location against expected terrain/elevation.
-- [ ] Validate non-`GPS` timeline altitude samples (for example `WIFI`) against known terrain and note expected error envelope.
+- [ ] Confirm repeated `Apply Suggested GPS` at the same shooting location within
+  one session does not re-hit the network (cache hit).
+- [ ] With missing altitude and valid lat/lon, confirm `Lookup Altitude For Set`
+  manually fills altitude for sets that still have none.
 
 ### Save/process output behavior
 
@@ -379,7 +393,7 @@ Use this when importing a new full-history timeline export.
 
 ### Automated test coverage
 
-- [x] Initial pytest suite (104 tests, `tests/services/`) covering pure logic
+- [x] Initial pytest suite (106 tests, `tests/services/`) covering pure logic
   (`auto_metadata`, `capture_group_service`, `rename_service`,
   `exif_service` field-mapping/GPS-parsing/art-filter-fallback,
   `ai_suggestion_service` JSON-extraction/keyword-normalize/refinement
@@ -414,11 +428,6 @@ Use this when importing a new full-history timeline export.
 - [ ] Validate whether second-level grouping causes false merges in dense bursts.
 - [ ] Evaluate stronger grouping keys (camera serial + subseconds + exposure guards) only if needed after field testing.
 
-### Altitude quality guardrails
-
-- [ ] Add optional altitude plausibility checks (for example soft warnings for extreme values and abrupt jumps within a short capture set).
-- [ ] Add a confidence tier for altitude source quality (`GPS` > inferred timeline > external lookup).
-- [ ] Add a "prefer lookup over unreliable timeline altitude" option for non-`GPS` source altitudes.
 
 ### AI model quality and specialization
 
@@ -465,4 +474,4 @@ Use this when importing a new full-history timeline export.
 - SD card workflow remains non-destructive (skip, no delete).
 - Batch `Location` remains a manual session label for naming context.
 - Timeline matching remains nearest-time within 30 minutes.
-- For altitude, timeline data is preferred when present, but source reliability is surfaced to the user.
+- For altitude, timeline data is never used; USGS elevation lookup is the sole source, applied automatically on every GPS apply.

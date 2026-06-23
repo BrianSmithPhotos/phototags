@@ -144,8 +144,6 @@ class MainWindow(QMainWindow):
         self._gps_suggestions: dict[Path, GpsSuggestion] = {}
         self._embedded_gps_by_path: dict[Path, bool] = {}
         self._embedded_altitude_by_path: dict[Path, bool] = {}
-        self._gps_altitude_unreliable_by_path: dict[Path, bool] = {}
-        self._gps_altitude_source_by_path: dict[Path, str] = {}
         self._altitude_target_paths: tuple[Path, ...] = tuple()
         self._geocode_target_paths: tuple[Path, ...] = tuple()
         self._location_context_by_path: dict[Path, str] = {}
@@ -195,7 +193,6 @@ class MainWindow(QMainWindow):
         self.metadata_panel.gps_latitude_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.gps_longitude_edit.textChanged.connect(self._on_metadata_edited)
         self.metadata_panel.gps_altitude_edit.textChanged.connect(self._on_metadata_edited)
-        self.metadata_panel.gps_altitude_edit.textEdited.connect(self._on_altitude_manually_edited)
         self.metadata_panel.set_ai_model_name(DEFAULT_PROVIDER_MODEL)
         self.preview_panel.skip_single_button.clicked.connect(self._on_skip_single_selected)
         self.preview_panel.skip_set_button.clicked.connect(self._on_skip_set_selected)
@@ -463,8 +460,6 @@ class MainWindow(QMainWindow):
         gps_latitude_text = draft.gps_latitude if draft is not None else ui_data.gps_latitude
         gps_longitude_text = draft.gps_longitude if draft is not None else ui_data.gps_longitude
         gps_altitude_text = draft.gps_altitude if draft is not None else ui_data.gps_altitude
-        altitude_unreliable = self._gps_altitude_unreliable_by_path.get(path_obj, False)
-        altitude_source = self._gps_altitude_source_by_path.get(path_obj, "")
 
         self._suppress_metadata_sync = True
         try:
@@ -484,10 +479,6 @@ class MainWindow(QMainWindow):
                 gps_longitude=gps_longitude_text,
                 gps_altitude=gps_altitude_text,
             )
-            self.metadata_panel.set_gps_altitude_unreliable(
-                altitude_unreliable and bool(gps_altitude_text.strip()),
-                source_type=altitude_source,
-            )
         finally:
             self._suppress_metadata_sync = False
         self._current_exif_ui_data = ui_data
@@ -503,9 +494,6 @@ class MainWindow(QMainWindow):
         )
         if self._selected_has_embedded_gps():
             self._gps_suggestions.pop(path_obj, None)
-            self._gps_altitude_unreliable_by_path[path_obj] = False
-            self._gps_altitude_source_by_path.pop(path_obj, None)
-            self.metadata_panel.set_gps_altitude_unreliable(False)
             self.metadata_panel.set_gps_status("Existing EXIF GPS found; timeline suggestion skipped")
         else:
             self._start_gps_suggest(image_path=path_obj, captured_at=ui_data.captured_at)
@@ -1016,11 +1004,8 @@ class MainWindow(QMainWindow):
 
         self._sync_current_draft()
         target_paths = self._gps_target_paths(selected)
-        timeline_altitude = suggestion.altitude_m
-        altitude_unreliable = timeline_altitude is not None and suggestion.source_type != "GPS"
         latitude_text = f"{suggestion.latitude:.7f}"
         longitude_text = f"{suggestion.longitude:.7f}"
-        altitude_text = "" if timeline_altitude is None else f"{timeline_altitude:.2f}"
 
         applied_paths: list[Path] = []
         skipped_embedded = 0
@@ -1035,12 +1020,7 @@ class MainWindow(QMainWindow):
                 continue
             draft.gps_latitude = latitude_text
             draft.gps_longitude = longitude_text
-            draft.gps_altitude = altitude_text
-            self._gps_altitude_unreliable_by_path[path] = altitude_unreliable
-            if altitude_unreliable:
-                self._gps_altitude_source_by_path[path] = suggestion.source_type
-            else:
-                self._gps_altitude_source_by_path.pop(path, None)
+            draft.gps_altitude = ""
             applied_paths.append(path)
 
         if not applied_paths:
@@ -1056,21 +1036,13 @@ class MainWindow(QMainWindow):
             self.metadata_panel.set_gps_fields(
                 latitude=latitude_text,
                 longitude=longitude_text,
-                altitude=altitude_text,
-            )
-            self.metadata_panel.set_gps_altitude_unreliable(
-                altitude_unreliable,
-                source_type=suggestion.source_type,
+                altitude="",
             )
         finally:
             self._suppress_metadata_sync = False
         self._sync_current_draft()
 
         status_parts = [f"Applied GPS to {len(applied_paths)}/{len(target_paths)} file(s) in capture set"]
-        if timeline_altitude is None:
-            status_parts.append("timeline altitude missing")
-        elif altitude_unreliable:
-            status_parts.append(f"altitude from {suggestion.source_type} marked unreliable")
         if skipped_embedded:
             status_parts.append(f"{skipped_embedded} skipped (existing EXIF GPS)")
         if skipped_unreadable:
@@ -1084,14 +1056,16 @@ class MainWindow(QMainWindow):
             target_paths=target_paths,
             reason=f"Looking up city/county/state for {len(target_paths)} file(s)...",
         )
-        if timeline_altitude is None and self.metadata_panel.auto_altitude_lookup_enabled():
-            self._start_altitude_lookup(
-                image_path=selected,
-                latitude=suggestion.latitude,
-                longitude=suggestion.longitude,
-                target_paths=tuple(applied_paths),
-                reason=f"Timeline altitude missing; looking up elevation for {len(applied_paths)} file(s)...",
-            )
+        # Timeline altitude (phone GPS/WIFI sensor noise) is unreliable even when
+        # tagged "GPS" source, so altitude always comes from USGS elevation lookup
+        # instead of whatever (if anything) the timeline export reported.
+        self._start_altitude_lookup(
+            image_path=selected,
+            latitude=suggestion.latitude,
+            longitude=suggestion.longitude,
+            target_paths=tuple(applied_paths),
+            reason=f"Looking up elevation for {len(applied_paths)} file(s)...",
+        )
 
     def _on_lookup_altitude_clicked(self) -> None:
         """Lookup and fill missing altitude for current capture set."""
@@ -1257,8 +1231,6 @@ class MainWindow(QMainWindow):
             if draft.gps_altitude.strip():
                 continue
             draft.gps_altitude = altitude_text
-            self._gps_altitude_unreliable_by_path[path] = False
-            self._gps_altitude_source_by_path.pop(path, None)
             applied_count += 1
             if path == path_obj:
                 selected_applied = True
@@ -1267,7 +1239,6 @@ class MainWindow(QMainWindow):
             self._suppress_metadata_sync = True
             try:
                 self.metadata_panel.gps_altitude_edit.setText(altitude_text)
-                self.metadata_panel.set_gps_altitude_unreliable(False)
             finally:
                 self._suppress_metadata_sync = False
             self._sync_current_draft()
@@ -1470,14 +1441,6 @@ class MainWindow(QMainWindow):
         """Persist current editors into in-memory draft for selected image."""
         self._sync_current_draft()
         self._restore_metadata_action_controls()
-
-    def _on_altitude_manually_edited(self, _: str) -> None:
-        """Clear unreliable marker when user manually edits altitude."""
-        if self._selected_image_path is None:
-            return
-        self._gps_altitude_unreliable_by_path[self._selected_image_path] = False
-        self._gps_altitude_source_by_path.pop(self._selected_image_path, None)
-        self.metadata_panel.set_gps_altitude_unreliable(False)
 
     def _sync_current_draft(self) -> None:
         """Capture editable fields for current selection into draft cache."""

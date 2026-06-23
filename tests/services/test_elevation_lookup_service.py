@@ -69,6 +69,45 @@ def test_lookup_altitude_m_raises_when_response_is_not_valid_json(monkeypatch: p
         service.lookup_altitude_m(latitude=45.5, longitude=-122.25)
 
 
+def test_lookup_altitude_m_caches_repeated_lookups_at_the_same_coordinate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_count = 0
+
+    def fake_urlopen(*a: object, **k: object) -> _FakeResponse:
+        nonlocal call_count
+        call_count += 1
+        return _FakeResponse({"value": "100.0"})
+
+    _patch_urlopen(monkeypatch, fake_urlopen)
+    service = ElevationLookupService()
+
+    first = service.lookup_altitude_m(latitude=45.5, longitude=-122.25)
+    # Coordinates within the cache's rounding precision should hit the cache.
+    second = service.lookup_altitude_m(latitude=45.50001, longitude=-122.25001)
+
+    assert first == second == 100.0
+    assert call_count == 1
+
+
+def test_lookup_altitude_m_does_not_cache_a_failed_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    call_count = 0
+
+    def fake_urlopen(*a: object, **k: object) -> _FakeResponse:
+        nonlocal call_count
+        call_count += 1
+        raise elevation_lookup_service_module.error.URLError("network unreachable")
+
+    _patch_urlopen(monkeypatch, fake_urlopen)
+    service = ElevationLookupService()
+
+    for _ in range(2):
+        with pytest.raises(ElevationLookupError):
+            service.lookup_altitude_m(latitude=45.5, longitude=-122.25)
+
+    assert call_count == 2
+
+
 def test_lookup_altitude_m_raises_on_url_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise_url_error(*a: object, **k: object) -> None:
         raise elevation_lookup_service_module.error.URLError("network unreachable")

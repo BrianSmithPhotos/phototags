@@ -16,8 +16,24 @@ class ElevationLookupError(RuntimeError):
 class ElevationLookupService:
     """Lookup elevation in meters for one coordinate pair."""
 
+    # Altitude now backs every GPS apply rather than only a manual fallback, so
+    # repeated lookups at the same shooting location (common within one import
+    # session) are cached in memory instead of re-querying the network each time.
+    _CACHE_COORDINATE_PRECISION = 4
+
+    def __init__(self) -> None:
+        self._cache: dict[tuple[float, float], float] = {}
+
     def lookup_altitude_m(self, *, latitude: float, longitude: float) -> float:
-        """Return altitude in meters from USGS EPQS for one lat/lon."""
+        """Return altitude in meters from USGS EPQS for one lat/lon, caching by rounded coordinate."""
+        cache_key = (
+            round(latitude, self._CACHE_COORDINATE_PRECISION),
+            round(longitude, self._CACHE_COORDINATE_PRECISION),
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         query = parse.urlencode(
             {
                 "x": f"{longitude:.7f}",
@@ -37,6 +53,7 @@ class ElevationLookupService:
         value = self._extract_value(payload)
         if value is None:
             raise ElevationLookupError("Elevation lookup returned no usable altitude")
+        self._cache[cache_key] = value
         return value
 
     def _extract_value(self, payload: object) -> float | None:
