@@ -1,4 +1,14 @@
-from phototags.services.exif_service import ExifService
+from pathlib import Path
+import subprocess
+
+import pytest
+
+from phototags.services import exif_service as exif_service_module
+from phototags.services.exif_service import ExifService, ExifToolReadError
+
+
+def _completed(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def test_map_for_ui_prefers_first_available_key_per_field() -> None:
@@ -167,3 +177,52 @@ def test_format_aperture_handles_integer_and_fractional_values() -> None:
     assert service._format_aperture("2.8") == "f/2.8"
     assert service._format_aperture("f/5.6") == "f/5.6"
     assert service._format_aperture("") == ""
+
+
+def test_read_full_metadata_returns_first_object_from_exiftool_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        exif_service_module.subprocess,
+        "run",
+        lambda *a, **k: _completed(stdout='[{"SourceFile": "a.jpg", "EXIF:Make": "OM Digital"}]'),
+    )
+    service = ExifService()
+
+    metadata = service.read_full_metadata(Path("a.jpg"))
+
+    assert metadata == {"SourceFile": "a.jpg", "EXIF:Make": "OM Digital"}
+
+
+def test_read_full_metadata_raises_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        exif_service_module.subprocess,
+        "run",
+        lambda *a, **k: _completed(returncode=1, stderr="File not found"),
+    )
+    service = ExifService()
+
+    with pytest.raises(ExifToolReadError, match="File not found"):
+        service.read_full_metadata(Path("missing.jpg"))
+
+
+def test_read_full_metadata_raises_on_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        exif_service_module.subprocess,
+        "run",
+        lambda *a, **k: _completed(stdout="not json"),
+    )
+    service = ExifService()
+
+    with pytest.raises(ExifToolReadError, match="Invalid JSON"):
+        service.read_full_metadata(Path("a.jpg"))
+
+
+def test_read_full_metadata_raises_when_exiftool_returns_no_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        exif_service_module.subprocess,
+        "run",
+        lambda *a, **k: _completed(stdout="[]"),
+    )
+    service = ExifService()
+
+    with pytest.raises(ExifToolReadError, match="No metadata returned"):
+        service.read_full_metadata(Path("a.jpg"))

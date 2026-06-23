@@ -60,30 +60,20 @@ it embedded where it can only be tested by driving the whole UI.
 | `test_selection_scope.py` | `selection_scope.py`: expanding a manual multi-selection to full capture-group membership, ORF-preference for AI source image and preview default, multi-selection guard on the preview redirect, range-anchor resolution and contiguous-range selection for shift-click | Direct regression coverage for selection not expanding to full sets, monochrome JPEG sent to AI instead of the ORF, cmd-click multi-select being silently collapsed by the ORF-preview redirect, and shift-click range-select silently collapsing to one tile when the preview redirect left the range anchor on a hidden capture-set member. |
 | `test_grid_navigation.py` | `grid_navigation.py`: next-tile-after-skip, including multi-tile skips and the all-removed edge case; `resolve_removal_anchor`'s mapping of a hidden capture-set member back to its visible tile for both partial-set and whole-set removal | Regression coverage for skip focus jumping back to the first tile instead of advancing, including when the active selection was a hidden ORF/JPG variant rather than the visible tile. |
 | `test_rename_service.py` | `rename_service.py`: filename pattern assembly, sanitization, collision-suffixing, missing-field fallbacks | Renaming runs on every processed file; a sanitization or collision bug means silent overwrites or invalid filenames on disk. |
-| `test_exif_service.py` | `exif_service.py`: `map_for_ui` field mapping, GPS DMS/decimal coordinate parsing and range validation, altitude formatting, `ArtFilterEffect`/`PictureMode`/`StackedImage`/`MultipleExposureMode` fallback chain, aperture formatting | These mapping/parsing rules feed the metadata panel and the rename/AI flows downstream; a wrong fallback or a coordinate-parsing bug shows the wrong (or no) value in the UI without erroring. |
-| `test_ai_suggestion_service.py` | `ai_suggestion_service.py`: JSON extraction from code-fenced/prose-wrapped model responses, keyword normalization/dedup, keyword merging, subject-crop-refinement trigger logic, word-boundary subject matching in descriptions | Parses and validates the AI model's response and decides whether to spend a second (refinement) request; a regression here either silently drops valid suggestions or triggers unnecessary refinement passes. |
+| `test_exif_service.py` | `exif_service.py`: `map_for_ui` field mapping, GPS DMS/decimal coordinate parsing and range validation, altitude formatting, `ArtFilterEffect`/`PictureMode`/`StackedImage`/`MultipleExposureMode` fallback chain, aperture formatting, `read_full_metadata` against a mocked `subprocess.run` (success, nonzero exit, invalid JSON, empty result) | These mapping/parsing rules feed the metadata panel and the rename/AI flows downstream; a wrong fallback or a coordinate-parsing bug shows the wrong (or no) value in the UI without erroring. |
+| `test_ai_suggestion_service.py` | `ai_suggestion_service.py`: JSON extraction from code-fenced/prose-wrapped model responses, keyword normalization/dedup, keyword merging, subject-crop-refinement trigger logic, word-boundary subject matching in descriptions, `suggest_for_image` end-to-end against a fake `AiProvider` (primary success, timeout-then-center-crop-retry, retry-also-empty failure), `_read_previewable_image_bytes` (direct JPEG read vs. mocked-`subprocess` ORF preview extraction, including the no-preview-found failure) | Parses and validates the AI model's response and decides whether to spend a second (refinement) request; a regression here either silently drops valid suggestions, triggers unnecessary refinement passes, or sends the wrong bytes (or none) to the model. |
+| `test_metadata_write_service.py` | `metadata_write_service.py`: `write_description_keywords` against a mocked `subprocess.run` (success, exiftool-command GPS argument construction, write failure restoring the `_original` backup file), GPS validation error paths (missing longitude, out-of-range latitude) | Metadata writes are the one operation that mutates files on disk; a wrong command argument or a skipped backup-restore on failure means silent data loss or corruption. |
+| `test_elevation_lookup_service.py` | `elevation_lookup_service.py`: USGS EPQS response parsing (direct `value` field, nested `Elevation_Query` shape), no-usable-value/invalid-JSON/network-error failure paths, via a mocked `urllib.request.urlopen` | Feeds GPS altitude auto-fill; a parsing regression silently fills no altitude or raises confusingly instead of a clear lookup error. |
+| `test_reverse_geocode_service.py` | `reverse_geocode_service.py`: Nominatim response parsing (city/county/state field fallback chains, `keyword_tokens`/`context_text` formatting), no-address/no-usable-fields/network-error failure paths, via a mocked `urllib.request.urlopen` | Feeds location keywords and AI prompt context; a parsing regression silently drops location data instead of raising. |
 
-78 tests, all currently passing, ~0.07s total.
+104 tests, all currently passing, ~0.09s total.
 
 ## Future test batches
 
 Roughly in priority order — highest regression risk and lowest setup cost
 first.
 
-### 1. `subprocess`/`urllib`-backed services, via mocking the boundary
-
-For `ExifService.read_full_metadata`, `MetadataWriteService`, and
-`AiSuggestionService.suggest_for_image`/`_read_previewable_image_bytes`
-(exiftool), and `ElevationLookupService`/`ReverseGeocodeService` (HTTP via
-`urllib`): don't run the real binary or hit the real network in tests. Use
-`monkeypatch.setattr(subprocess, "run", fake_run)` /
-`monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)` to return a
-canned response, then assert on the parsed result. This tests "does our code
-correctly handle exiftool/the API's output shape" without testing exiftool
-or the network itself. Add a `tests/services/conftest.py` fixture (e.g.
-`fake_exiftool_run`) once two or more test files need the same fake.
-
-### 2. `timeline_location_service.py`
+### 1. `timeline_location_service.py`
 
 Mostly I/O (SQLite cache, JSON parsing of the Google Timeline export) but the
 matching logic is pure once you have parsed positions:
@@ -92,7 +82,7 @@ matching logic is pure once you have parsed positions:
 end-to-end, build a temp SQLite file with `_ensure_schema` + a few inserted
 rows rather than going through real Timeline JSON ingestion.
 
-### 3. `process_move_service.py` destination routing
+### 2. `process_move_service.py` destination routing
 
 Routing rules (ORF vs JPEG destination subfolder, date-folder naming) look
 pure from the signatures — confirm there's no direct filesystem write inside
@@ -101,20 +91,21 @@ checksum-verify step, and test the routing decision as pure logic. Don't unit
 test the actual file copy/checksum verification here — that's an integration
 test (see below).
 
-### 4. Integration-level tests (separate, slower tier)
+### 3. Integration-level tests (separate, slower tier)
 
 Once the above pure-logic coverage exists, the highest-value next step is a
 small number of tests that exercise real file I/O end-to-end without Qt:
 build a `tmp_path` with a couple of fake JPEG/ORF files (don't need real
 image bytes for metadata writes — exiftool will error on garbage image data,
 so these specifically need either tiny real sample images checked into
-`tests/fixtures/` or to mock at the exiftool boundary as in #1), run
+`tests/fixtures/` or to mock at the exiftool boundary, as the existing
+`test_metadata_write_service.py`/`test_exif_service.py` do), run
 `ProcessMoveService` against them, and assert the files landed at the
 expected destination with the expected checksum behavior. Mark these
 `@pytest.mark.integration` and keep them out of the default fast run if they
 turn out to need a real `exiftool` binary on `PATH`.
 
-### 5. UI/widget tests (last, and only if regressions start happening there)
+### 4. UI/widget tests (last, and only if regressions start happening there)
 
 Testing `main_window.py` or `source_panel.py` directly requires
 `pytest-qt` and a `QApplication` (`QT_QPA_PLATFORM=offscreen` for CI). Given
