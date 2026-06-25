@@ -13,8 +13,9 @@ import re
 import subprocess
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageOps
 
+from phototags.services.image_utils import apply_exif_orientation
 from phototags.services.ai_provider import (
     AiProvider,
     AiSuggestionError,
@@ -683,7 +684,14 @@ class AiSuggestionService:
         return output.getvalue()
 
     def _read_previewable_image_bytes(self, image_path: Path) -> bytes:
-        """Read source image or extract preview image from RAW."""
+        """Read source image or extract preview image from RAW.
+
+        For RAW files, the embedded preview JPEG does not carry its own
+        Orientation tag — the rotation is only in the outer RAW EXIF.  This
+        method reads that tag and re-encodes the preview with the rotation
+        already applied so that callers receive correctly-oriented bytes
+        regardless of how the image was captured.
+        """
         if image_path.suffix.lower() in {".jpg", ".jpeg"}:
             return image_path.read_bytes()
 
@@ -698,13 +706,29 @@ class AiSuggestionService:
             raise AiSuggestionError(
                 message or f"Unable to extract preview image from {image_path.name}"
             )
-        return result.stdout
+        raw_preview = result.stdout
+        orientation = _read_raw_orientation(image_path)
+        if orientation == 1:
+            return raw_preview
+        try:
+            with Image.open(io.BytesIO(raw_preview)) as preview:
+                corrected = apply_exif_orientation(preview, orientation)
+                return self._pil_to_jpeg_bytes(corrected.convert("RGB"))
+        except OSError:
+            return raw_preview
 
     def _to_web_jpeg(self, *, image_bytes: bytes) -> bytes:
-        """Resize/re-encode image to compact JPEG payload for model inference."""
+        """Resize/re-encode image to compact JPEG payload for model inference.
+
+        Applies EXIF orientation before resizing so that JPEG files with an
+        Orientation tag in their own EXIF (standard camera JPEGs) are sent
+        upright to the model.  RAW-derived bytes from _read_previewable_image_bytes
+        already have orientation baked in, so exif_transpose is a no-op for them.
+        """
         try:
             with Image.open(io.BytesIO(image_bytes)) as img:
-                converted = img.convert("RGB")
+                oriented = ImageOps.exif_transpose(img)
+                converted = oriented.convert("RGB")
                 converted.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE))
                 output = io.BytesIO()
                 converted.save(
@@ -728,3 +752,20 @@ class AiSuggestionService:
         if value is None:
             return ""
         return str(value)
+
+
+def _read_raw_orientation(path: Path) -> int:
+    """Return the EXIF Orientation integer from a RAW file, or 1 (upright) on any failure."""
+    try:
+        result = subprocess.run(
+            ["exiftool", "-j", "-Orientation#", str(path)],
+            capture_output=True,
+            check=False,
+            timeout=4,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return 1
+        data = json.loads(result.stdout)
+        return int(data[0].get("Orientation", 1))
+    except (json.JSONDecodeError, IndexError, KeyError, ValueError, subprocess.TimeoutExpired):
+        return 1

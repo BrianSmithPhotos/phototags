@@ -139,6 +139,7 @@ class MainWindow(QMainWindow):
         self._process_inflight = False
         self._selected_image_path: Path | None = None
         self._multi_selected_paths: tuple[Path, ...] = ()
+        self._variant_selected_paths: set[Path] = set()
         self._current_exif_ui_data: ExifUiData | None = None
         self._metadata_drafts: dict[Path, MetadataDraft] = {}
         self._gps_suggestions: dict[Path, GpsSuggestion] = {}
@@ -148,6 +149,13 @@ class MainWindow(QMainWindow):
         self._geocode_target_paths: tuple[Path, ...] = tuple()
         self._location_context_by_path: dict[Path, str] = {}
         self._suppress_metadata_sync = False
+        # Tracks capture-set representatives that received GPS auto-apply this session
+        # so re-focusing the same set doesn't trigger a second apply.
+        self._gps_auto_applied_paths: set[Path] = set()
+        # Set True after an AI-triggered auto-save so save buttons stay disabled
+        # until the user manually edits description or keywords again.
+        self._metadata_clean_since_ai_save: bool = False
+        self._ai_auto_save_pending: bool = False
         self.setWindowTitle("MacPhotoMaster")
         self.resize(1460, 900)
         self.setMinimumSize(1180, 720)
@@ -177,6 +185,7 @@ class MainWindow(QMainWindow):
         self.source_panel.selection_changed.connect(self._on_selection_changed)
         self.source_panel.thumbnail_loaded.connect(self._on_thumbnail_loaded)
         self.preview_panel.variant_selected.connect(self._on_variant_selected)
+        self.preview_panel.variant_selection_changed.connect(self._on_variant_selection_changed)
         self.metadata_panel.save_single_button.clicked.connect(self._on_save_single_clicked)
         self.metadata_panel.save_set_button.clicked.connect(self._on_save_set_clicked)
         self.metadata_panel.process_single_button.clicked.connect(self._on_process_single_clicked)
@@ -184,8 +193,7 @@ class MainWindow(QMainWindow):
         self.metadata_panel.process_selection_button.clicked.connect(self._on_process_selection_clicked)
         self.metadata_panel.process_session_button.clicked.connect(self._on_process_session_clicked)
         self.metadata_panel.suggest_button.clicked.connect(self._on_ai_suggest_clicked)
-        self.metadata_panel.suggest_gps_button.clicked.connect(self._on_gps_suggest_clicked)
-        self.metadata_panel.apply_gps_button.clicked.connect(self._on_gps_apply_clicked)
+        self.metadata_panel.save_selected_button.clicked.connect(self._on_save_selected_clicked)
         self.metadata_panel.lookup_altitude_button.clicked.connect(self._on_lookup_altitude_clicked)
         self.metadata_panel.location_edit.textChanged.connect(self._update_rename_preview)
         self.metadata_panel.description_edit.textChanged.connect(self._on_metadata_edited)
@@ -243,6 +251,12 @@ class MainWindow(QMainWindow):
     def _activate_selected_preview(self, image_path: Path | None) -> None:
         """Start background preview loading for selected photo."""
         self._sync_current_draft()
+        # Reset clean-since-AI-save when moving to a genuinely different capture set
+        # so the save buttons are always available for a newly-focused set.
+        new_rep = self._get_representative_for(image_path)
+        cur_rep = self._get_representative_for(self._selected_image_path)
+        if new_rep != cur_rep:
+            self._metadata_clean_since_ai_save = False
         self._selected_image_path = image_path
         if image_path is None:
             self._current_exif_ui_data = None
@@ -254,8 +268,6 @@ class MainWindow(QMainWindow):
             self.preview_panel.skip_set_button.setEnabled(False)
             self.metadata_panel.set_suggest_button_enabled(False)
             self.metadata_panel.set_process_buttons_enabled(False)
-            self.metadata_panel.set_gps_lookup_button_enabled(False)
-            self.metadata_panel.set_gps_apply_button_enabled(False)
             self.metadata_panel.set_lookup_altitude_button_enabled(False)
             self.metadata_panel.clear_gps_status()
             return
@@ -282,7 +294,6 @@ class MainWindow(QMainWindow):
         self._start_exif_load(image_path=image_path)
         self.metadata_panel.clear_ai_suggestions()
         self.metadata_panel.clear_gps_status()
-        self.metadata_panel.set_gps_apply_button_enabled(False)
         self._restore_metadata_action_controls()
         self.metadata_panel.set_save_status("")
         self._update_rename_preview()
@@ -290,9 +301,7 @@ class MainWindow(QMainWindow):
     def _on_selection_changed(self, paths: tuple[Path, ...]) -> None:
         """Track the left nav's manual multi-selection (cmd-click/shift-click)."""
         self._multi_selected_paths = paths
-        is_manual = len(paths) > 1
-        label = f"Save Selected ({len(paths)})" if is_manual else "Save Capture Set"
-        self.metadata_panel.set_save_set_button_label(label)
+        self._restore_metadata_action_controls()
 
     def _is_manual_multi_target(self, selected_path: Path) -> bool:
         """Return True when a manual multi-selection (not capture grouping) is active for this path."""
@@ -596,8 +605,6 @@ class MainWindow(QMainWindow):
         )
         self.metadata_panel.set_rename_preview("")
         self.metadata_panel.set_suggest_button_enabled(False)
-        self.metadata_panel.set_gps_lookup_button_enabled(False)
-        self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
 
     def _on_save_single_clicked(self) -> None:
@@ -609,18 +616,22 @@ class MainWindow(QMainWindow):
         self._start_save_scope("single image", [selected])
 
     def _on_save_set_clicked(self) -> None:
-        """Persist description + keywords for the active capture set or manual selection."""
+        """Persist description + keywords for all files in the active capture set."""
         selected = self._selected_image_path
         if selected is None:
             self.metadata_panel.set_save_status("No file selected", is_error=True)
             return
-        if self._is_manual_multi_target(selected):
-            paths = list(self._expand_to_capture_groups(self._multi_selected_paths))
-            self._start_save_scope(f"{len(paths)} selected images", paths)
-            return
         group = self._group_by_path.get(selected)
         paths = list(group.members) if group is not None else [selected]
         self._start_save_scope("capture set", paths)
+
+    def _on_save_selected_clicked(self) -> None:
+        """Persist description + keywords for the ring-selected files in the variant strip."""
+        if not self._variant_selected_paths:
+            self.metadata_panel.set_save_status("No files ring-selected", is_error=True)
+            return
+        paths = sorted(self._variant_selected_paths, key=lambda p: p.name)
+        self._start_save_scope(f"{len(paths)} selected image(s)", paths)
 
     def _start_save_scope(self, scope_label: str, paths: list[Path]) -> None:
         """Start one background save job for selected scope."""
@@ -659,8 +670,6 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_buttons_enabled(False)
         self.metadata_panel.set_process_buttons_enabled(False)
         self.metadata_panel.set_suggest_button_enabled(False)
-        self.metadata_panel.set_gps_lookup_button_enabled(False)
-        self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
         self.preview_panel.skip_single_button.setEnabled(False)
         self.preview_panel.skip_set_button.setEnabled(False)
@@ -725,10 +734,15 @@ class MainWindow(QMainWindow):
             finally:
                 self._suppress_metadata_sync = False
 
+        was_ai_auto_save = self._ai_auto_save_pending
+        self._ai_auto_save_pending = False
+        if was_ai_auto_save and result.failure_count == 0:
+            self._metadata_clean_since_ai_save = True
         self._restore_metadata_action_controls()
         if result.failure_count == 0:
+            prefix = "AI suggestions auto-saved" if was_ai_auto_save else "Saved description + keywords + GPS"
             self.metadata_panel.set_save_status(
-                f"Saved description + keywords + GPS for {result.success_count}/{result.total_count} files ({result.scope_label})"
+                f"{prefix} for {result.success_count}/{result.total_count} files ({result.scope_label})"
             )
         else:
             first_failure = next((item for item in result.outcomes if item.error), None)
@@ -803,8 +817,6 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_suggest_button_enabled(False)
         self.metadata_panel.set_save_button_enabled(False)
         self.metadata_panel.set_process_buttons_enabled(False)
-        self.metadata_panel.set_gps_lookup_button_enabled(False)
-        self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
         self.preview_panel.skip_single_button.setEnabled(False)
         self.preview_panel.skip_set_button.setEnabled(False)
@@ -899,6 +911,14 @@ class MainWindow(QMainWindow):
                 is_error=True,
             )
             return
+
+        # Auto-save the AI suggestions to the capture set immediately so the user
+        # doesn't need a separate Save click.  The save buttons are disabled after
+        # the save completes (_ai_auto_save_pending → _metadata_clean_since_ai_save)
+        # and re-enabled the moment the user manually edits any field.
+        self._ai_auto_save_pending = True
+        self._on_save_set_clicked()
+
         status_notes: list[str] = []
         if expanded_to_group:
             status_notes.append("expanded to full capture set")
@@ -959,32 +979,6 @@ class MainWindow(QMainWindow):
         self._ai_inflight = False
         self._restore_metadata_action_controls()
         self.metadata_panel.set_ai_status(f"AI suggestion failed: {error}", is_error=True)
-
-    def _on_gps_suggest_clicked(self) -> None:
-        """Manually refresh GPS suggestion for currently selected image."""
-        selected = self._selected_image_path
-        if selected is None:
-            self.metadata_panel.set_gps_status("No file selected", is_error=True)
-            return
-        if self._selected_has_embedded_gps():
-            self.metadata_panel.set_gps_status(
-                "Existing EXIF GPS found; timeline suggestion disabled to avoid overwrite"
-            )
-            return
-        if self._save_inflight:
-            self.metadata_panel.set_gps_status("Save already running...", is_error=True)
-            return
-        if self._process_inflight:
-            self.metadata_panel.set_gps_status("Process already running...", is_error=True)
-            return
-        if self._ai_inflight:
-            self.metadata_panel.set_gps_status("AI suggestions running...", is_error=True)
-            return
-        captured_at = self._current_exif_ui_data.captured_at if self._current_exif_ui_data else ""
-        if not captured_at:
-            self.metadata_panel.set_gps_status("Capture time is missing; cannot match timeline", is_error=True)
-            return
-        self._start_gps_suggest(image_path=selected, captured_at=captured_at)
 
     def _on_gps_apply_clicked(self) -> None:
         """Apply current timeline GPS suggestion into editable GPS fields for current set."""
@@ -1141,7 +1135,6 @@ class MainWindow(QMainWindow):
         """Start one background timeline lookup for selected image capture time."""
         if not captured_at.strip():
             self.metadata_panel.set_gps_status("Capture time is missing; cannot match timeline")
-            self.metadata_panel.set_gps_apply_button_enabled(False)
             return
 
         self._location_request_id += 1
@@ -1150,7 +1143,6 @@ class MainWindow(QMainWindow):
         job_id = self._location_job_id
 
         self.metadata_panel.set_gps_status("Looking up nearest GPS in timeline...")
-        self.metadata_panel.set_gps_apply_button_enabled(False)
 
         signals = LocationSuggestSignals()
         signals.suggested.connect(partial(self._on_gps_suggested, request_id, job_id))
@@ -1403,6 +1395,14 @@ class MainWindow(QMainWindow):
         if path_obj != self._selected_image_path:
             return
 
+        # Auto-apply GPS on first focus for this set in the current session.
+        # The guard prevents re-applying when the user navigates back to the same set.
+        representative = self._get_representative_for(path_obj)
+        if representative is not None and representative not in self._gps_auto_applied_paths:
+            self._gps_auto_applied_paths.add(representative)
+            self._on_gps_apply_clicked()
+            return  # _on_gps_apply_clicked calls _restore_metadata_action_controls
+
         matched_at = datetime.fromtimestamp(suggestion.matched_ts_utc, tz=timezone.utc)
         matched_at_text = matched_at.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
         age_minutes = suggestion.age_seconds // 60
@@ -1440,21 +1440,51 @@ class MainWindow(QMainWindow):
     def _on_metadata_edited(self) -> None:
         """Persist current editors into in-memory draft for selected image."""
         self._sync_current_draft()
+        if not self._suppress_metadata_sync:
+            self._metadata_clean_since_ai_save = False
         self._restore_metadata_action_controls()
 
     def _sync_current_draft(self) -> None:
-        """Capture editable fields for current selection into draft cache."""
+        """Capture editable fields for current selection into draft cache.
+
+        Description and keywords are capture-set fields — editing them in the UI
+        represents an intent to apply them to all members, not just the currently
+        displayed variant.  GPS fields are per-file (each member may have shot at
+        a slightly different location) and are not propagated here.
+        """
         if self._suppress_metadata_sync:
             return
         if self._selected_image_path is None:
             return
+        description = self.metadata_panel.description_text()
+        keywords = self.metadata_panel.keywords_text()
+        gps_latitude = self.metadata_panel.gps_latitude_text()
+        gps_longitude = self.metadata_panel.gps_longitude_text()
+        gps_altitude = self.metadata_panel.gps_altitude_text()
         self._metadata_drafts[self._selected_image_path] = MetadataDraft(
-            description=self.metadata_panel.description_text(),
-            keywords=self.metadata_panel.keywords_text(),
-            gps_latitude=self.metadata_panel.gps_latitude_text(),
-            gps_longitude=self.metadata_panel.gps_longitude_text(),
-            gps_altitude=self.metadata_panel.gps_altitude_text(),
+            description=description,
+            keywords=keywords,
+            gps_latitude=gps_latitude,
+            gps_longitude=gps_longitude,
+            gps_altitude=gps_altitude,
         )
+        # Propagate description/keywords to all other members of the capture set
+        # so that Save Capture Set writes the same editorial text to every file.
+        group = self._group_by_path.get(self._selected_image_path)
+        if group is not None:
+            for member_path in group.members:
+                if member_path == self._selected_image_path:
+                    continue
+                existing = self._metadata_drafts.get(member_path)
+                if existing is None:
+                    continue
+                self._metadata_drafts[member_path] = MetadataDraft(
+                    description=description,
+                    keywords=keywords,
+                    gps_latitude=existing.gps_latitude,
+                    gps_longitude=existing.gps_longitude,
+                    gps_altitude=existing.gps_altitude,
+                )
 
     def _ai_targets_for(self, selected_path: Path) -> tuple[Path, tuple[Path, ...]]:
         """Return representative and member list for AI apply scope.
@@ -1595,16 +1625,11 @@ class MainWindow(QMainWindow):
             and not self._ai_inflight
             and not self._save_inflight
         )
-        allow_gps_actions = allow_actions and not self._selected_has_embedded_gps()
         self.metadata_panel.set_suggest_button_enabled(allow_actions)
-        self.metadata_panel.set_save_button_enabled(allow_actions)
-        self.metadata_panel.set_process_buttons_enabled(allow_actions)
-        self.metadata_panel.set_gps_lookup_button_enabled(allow_gps_actions)
-        has_suggestion = (
-            self._selected_image_path is not None
-            and self._selected_image_path in self._gps_suggestions
+        self.metadata_panel.set_save_button_enabled(
+            allow_actions and not self._metadata_clean_since_ai_save
         )
-        self.metadata_panel.set_gps_apply_button_enabled(allow_gps_actions and has_suggestion)
+        self.metadata_panel.set_process_buttons_enabled(allow_actions)
         lat_value, lon_value = self._current_gps_lat_lon()
         selected = self._selected_image_path
         lookup_target_paths = self._gps_target_paths(selected) if selected is not None else tuple()
@@ -1614,6 +1639,20 @@ class MainWindow(QMainWindow):
             and lat_value is not None
             and lon_value is not None
             and has_lookup_target
+        )
+        selected = self._selected_image_path
+        group = self._group_by_path.get(selected) if selected is not None else None
+        all_set_paths: set[Path] = (
+            set(group.members) if group is not None
+            else ({selected} if selected is not None else set())
+        )
+        is_partial = (
+            bool(self._variant_selected_paths)
+            and self._variant_selected_paths < all_set_paths
+        )
+        self.metadata_panel.set_save_selected_button_enabled(
+            allow_actions and is_partial,
+            count=len(self._variant_selected_paths) if is_partial else 0,
         )
         self.preview_panel.skip_single_button.setEnabled(allow_actions)
         # Skip Set stays enabled for a single-image "set" too -- `_on_skip_set_selected`
@@ -1627,6 +1666,13 @@ class MainWindow(QMainWindow):
         if data is None:
             return False
         return bool(data.gps_latitude.strip() and data.gps_longitude.strip())
+
+    def _get_representative_for(self, path: Path | None) -> Path | None:
+        """Return the capture-group representative for path, or path itself if ungrouped."""
+        if path is None:
+            return None
+        group = self._group_by_path.get(path)
+        return group.representative_path if group is not None else path
 
     def _current_gps_lat_lon(self) -> tuple[float | None, float | None]:
         """Return numeric lat/lon from editable GPS fields when valid."""
@@ -1745,8 +1791,6 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_save_button_enabled(False)
         self.metadata_panel.set_process_buttons_enabled(False)
         self.metadata_panel.set_suggest_button_enabled(False)
-        self.metadata_panel.set_gps_lookup_button_enabled(False)
-        self.metadata_panel.set_gps_apply_button_enabled(False)
         self.metadata_panel.set_lookup_altitude_button_enabled(False)
         self.preview_panel.skip_single_button.setEnabled(False)
         self.preview_panel.skip_set_button.setEnabled(False)
@@ -1881,6 +1925,11 @@ class MainWindow(QMainWindow):
         self.source_panel.select_path(image_path, emit_signal=False)
         self._activate_selected_preview(image_path)
 
+    def _on_variant_selection_changed(self, paths: tuple[Path, ...]) -> None:
+        """Update save-selected scope when the variant strip ring-selection changes."""
+        self._variant_selected_paths = set(paths)
+        self._restore_metadata_action_controls()
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Stop thread pools cleanly before window teardown."""
         self._group_pool.clear()
@@ -1944,11 +1993,13 @@ class MainWindow(QMainWindow):
     def _refresh_variant_strip(self, selected_path: Path | None) -> None:
         """Refresh variant strip for current selection and grouping state."""
         if selected_path is None:
+            self._variant_selected_paths = set()
             self.preview_panel.set_variants([], None, {})
             return
 
         group = self._group_by_path.get(selected_path)
         if group is None:
+            self._variant_selected_paths = {selected_path}
             self.preview_panel.set_variants(
                 [selected_path],
                 selected_path,
@@ -1956,6 +2007,7 @@ class MainWindow(QMainWindow):
             )
             return
         members = list(group.members)
+        self._variant_selected_paths = set(members)
         thumbnails = {
             path: self.source_panel.thumbnail_for_path(path)
             for path in members

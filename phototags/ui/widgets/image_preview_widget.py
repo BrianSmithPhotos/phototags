@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QGuiApplication, QIcon, QPixmap
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -38,6 +38,7 @@ class ImagePreviewWidget(QWidget):
     """Center panel showing selected image preview and actions."""
 
     variant_selected = Signal(object)
+    variant_selection_changed = Signal(object)  # emits tuple[Path, ...] of ring-selected paths
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -45,6 +46,8 @@ class ImagePreviewWidget(QWidget):
         self._setting_zoom_programmatically = False
         self._auto_fit_on_resize = True
         self._variant_buttons: list[QPushButton] = []
+        self._variant_path_to_button: dict[Path, QPushButton] = {}
+        self._selected_variant_paths: set[Path] = set()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -177,10 +180,13 @@ class ImagePreviewWidget(QWidget):
                 padding: 2px;
                 font-weight: 500;
             }}
-            QPushButton#variantButton:checked {{
+            QPushButton#variantButton[selected="true"] {{
                 background: {VARIANT_BUTTON_CHECKED_BG};
                 border: 1px solid {ACCENT_CYAN};
                 color: {VARIANT_BUTTON_CHECKED_TEXT};
+            }}
+            QPushButton#variantButton[active="true"] {{
+                border: 2px solid {ACCENT_CYAN};
             }}
             QLabel, QSlider {{
                 color: {BROWN_TEXT};
@@ -225,29 +231,34 @@ class ImagePreviewWidget(QWidget):
         selected_path: Path | None,
         thumbnails: dict[Path, QPixmap | None] | None = None,
     ) -> None:
-        """Render capture-set variant thumbnails for quick in-group switching."""
+        """Render capture-set variant thumbnails for quick in-group switching.
+
+        All members of the capture set are shown as "selected" (selection ring
+        on every button) because saves and AI apply always act on the full set.
+        A separate "active" indicator (thicker border) marks whichever variant
+        is currently displayed in the main preview.  Clicking a button changes
+        the preview without affecting which files are targeted for metadata ops.
+        """
         self._clear_variant_buttons()
+        self._selected_variant_paths = set(variant_paths)
         thumb_map = thumbnails or {}
         if not variant_paths:
             self.variant_status.setText("No files")
             self.variant_layout.addStretch(1)
             return
 
-        selected_index = 1
-        if selected_path is not None and selected_path in variant_paths:
-            selected_index = variant_paths.index(selected_path) + 1
-
-        if len(variant_paths) == 1:
-            self.variant_status.setText("1 file")
-        else:
-            self.variant_status.setText(f"{selected_index}/{len(variant_paths)} selected")
+        count = len(variant_paths)
+        self.variant_status.setText("1 file" if count == 1 else f"{count} files")
 
         for path in variant_paths:
             button = QPushButton("")
             button.setObjectName("variantButton")
-            button.setCheckable(True)
-            button.setAutoExclusive(True)
-            button.setChecked(selected_path is not None and path == selected_path)
+            # Not checkable — state is driven entirely via the "selected" and
+            # "active" dynamic properties so clicking never toggles appearance.
+            button.setProperty("selected", True)
+            button.setProperty("active", path == selected_path)
+            button.style().unpolish(button)
+            button.style().polish(button)
             button.setFixedSize(82, 60)
             button.setToolTip(path.name)
 
@@ -262,6 +273,7 @@ class ImagePreviewWidget(QWidget):
             button.clicked.connect(partial(self._on_variant_clicked, path))
             self.variant_layout.addWidget(button)
             self._variant_buttons.append(button)
+            self._variant_path_to_button[path] = button
 
         self.variant_layout.addStretch(1)
 
@@ -293,8 +305,37 @@ class ImagePreviewWidget(QWidget):
         self._apply_zoom()
 
     def _on_variant_clicked(self, image_path: Path) -> None:
-        """Emit selected variant path for parent window routing."""
-        self.variant_selected.emit(image_path)
+        """Handle variant button click.
+
+        Plain click: change the active (previewed) file.
+        Cmd-click: toggle the selection ring; deselecting is blocked when only
+        one file remains selected so the strip is never fully empty.
+        """
+        modifiers = QGuiApplication.keyboardModifiers()
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            # Cmd-click: toggle ring, but keep at least one selected.
+            if image_path in self._selected_variant_paths:
+                if len(self._selected_variant_paths) > 1:
+                    self._selected_variant_paths.discard(image_path)
+            else:
+                self._selected_variant_paths.add(image_path)
+            btn = self._variant_path_to_button.get(image_path)
+            if btn is not None:
+                btn.setProperty("selected", image_path in self._selected_variant_paths)
+                btn.style().unpolish(btn)
+                btn.style().polish(btn)
+                btn.update()
+            self.variant_selection_changed.emit(tuple(self._selected_variant_paths))
+        else:
+            # Plain click: change active preview only.
+            for path, btn in self._variant_path_to_button.items():
+                new_active = path == image_path
+                if btn.property("active") != new_active:
+                    btn.setProperty("active", new_active)
+                    btn.style().unpolish(btn)
+                    btn.style().polish(btn)
+                    btn.update()
+            self.variant_selected.emit(image_path)
 
     def _clear_variant_buttons(self) -> None:
         """Remove existing variant controls from strip."""
@@ -304,6 +345,8 @@ class ImagePreviewWidget(QWidget):
             if widget is not None:
                 widget.deleteLater()
         self._variant_buttons.clear()
+        self._variant_path_to_button.clear()
+        self._selected_variant_paths.clear()
 
     def _apply_zoom(self) -> None:
         """Scale current pixmap to slider-selected zoom, keeping the viewed point centered."""

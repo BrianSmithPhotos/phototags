@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -80,7 +81,7 @@ class MetadataPanel(QWidget):
         form.addRow("Keywords", self.keywords_edit)
         layout.addLayout(form)
 
-        ai_heading = QLabel("AI Suggestions (Ollama)")
+        ai_heading = QLabel("AI Suggestions")
         ai_heading.setObjectName("subHeading")
         layout.addWidget(ai_heading)
 
@@ -183,21 +184,6 @@ class MetadataPanel(QWidget):
         gps_heading.setObjectName("subHeading")
         layout.addWidget(gps_heading)
 
-        gps_button_row = QHBoxLayout()
-        gps_button_row.setSpacing(6)
-
-        self.suggest_gps_button = QPushButton("Suggest GPS From Timeline")
-        self.suggest_gps_button.setEnabled(False)
-        self.suggest_gps_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        gps_button_row.addWidget(self.suggest_gps_button, 1)
-
-        self.apply_gps_button = QPushButton("Apply Suggested GPS To Set")
-        self.apply_gps_button.setEnabled(False)
-        self.apply_gps_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        gps_button_row.addWidget(self.apply_gps_button, 1)
-
-        layout.addLayout(gps_button_row)
-
         gps_form = QFormLayout()
         gps_form.setSpacing(6)
         self.gps_latitude_edit = QLineEdit()
@@ -208,12 +194,20 @@ class MetadataPanel(QWidget):
         self.gps_altitude_edit.setPlaceholderText("Altitude meters (optional)")
         gps_form.addRow("Lat", self.gps_latitude_edit)
         gps_form.addRow("Lon", self.gps_longitude_edit)
-        gps_form.addRow("Alt (m)", self.gps_altitude_edit)
-        layout.addLayout(gps_form)
 
-        self.lookup_altitude_button = QPushButton("Lookup Altitude For Set")
+        altitude_row = QHBoxLayout()
+        altitude_row.setSpacing(4)
+        altitude_row.setContentsMargins(0, 0, 0, 0)
+        altitude_row.addWidget(self.gps_altitude_edit, 1)
+        self.lookup_altitude_button = QToolButton()
+        self.lookup_altitude_button.setObjectName("altitudeLookupButton")
+        self.lookup_altitude_button.setText("↻")
+        self.lookup_altitude_button.setToolTip("Lookup altitude from USGS elevation service")
+        self.lookup_altitude_button.setFixedSize(26, 26)
         self.lookup_altitude_button.setEnabled(False)
-        layout.addWidget(self.lookup_altitude_button)
+        altitude_row.addWidget(self.lookup_altitude_button)
+        gps_form.addRow("Alt (m)", altitude_row)
+        layout.addLayout(gps_form)
 
         self.gps_status = QLabel("")
         self.gps_status.setObjectName("statusLabel")
@@ -245,6 +239,11 @@ class MetadataPanel(QWidget):
         self.save_single_button.setEnabled(False)
         self.save_single_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         save_row.addWidget(self.save_single_button, 1)
+
+        self.save_selected_button = QPushButton("Save Selected")
+        self.save_selected_button.setEnabled(False)
+        self.save_selected_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        save_row.addWidget(self.save_selected_button, 1)
 
         self.save_set_button = QPushButton("Save Capture Set")
         self.save_set_button.setEnabled(False)
@@ -338,6 +337,20 @@ class MetadataPanel(QWidget):
             }}
             QPushButton:disabled {{
                 background: {BUTTON_DISABLED_BG};
+                color: {BUTTON_DISABLED_TEXT};
+            }}
+            QToolButton#altitudeLookupButton {{
+                background: {PANEL_BACKGROUND};
+                color: {BROWN_TEXT};
+                border: 1px solid {BUTTON_DISABLED_BG};
+                border-radius: 4px;
+                font-size: 14px;
+            }}
+            QToolButton#altitudeLookupButton:enabled {{
+                border-color: {ACCENT_CYAN};
+                color: {DARK_TEAL};
+            }}
+            QToolButton#altitudeLookupButton:disabled {{
                 color: {BUTTON_DISABLED_TEXT};
             }}
             """
@@ -440,8 +453,6 @@ class MetadataPanel(QWidget):
         self._last_exif_dump = message
         self.clear_ai_suggestions()
         self.clear_gps_status()
-        self.set_gps_lookup_button_enabled(False)
-        self.set_gps_apply_button_enabled(False)
         self.set_lookup_altitude_button_enabled(False)
         self.set_suggest_button_enabled(False)
         self.set_save_buttons_enabled(False)
@@ -457,17 +468,22 @@ class MetadataPanel(QWidget):
         return self.keywords_edit.toPlainText()
 
     def set_save_buttons_enabled(self, enabled: bool) -> None:
-        """Enable/disable metadata save actions."""
+        """Enable/disable all save actions (used during inflight operations)."""
+        self.save_single_button.setEnabled(enabled)
+        self.save_set_button.setEnabled(enabled)
+        if not enabled:
+            self.save_selected_button.setEnabled(False)
+
+    def set_save_button_enabled(self, enabled: bool) -> None:
+        """Enable/disable single-file and capture-set save buttons (not Save Selected)."""
         self.save_single_button.setEnabled(enabled)
         self.save_set_button.setEnabled(enabled)
 
-    def set_save_set_button_label(self, label: str) -> None:
-        """Update the capture-set save button's label (e.g. to reflect manual multi-selection)."""
-        self.save_set_button.setText(label)
-
-    def set_save_button_enabled(self, enabled: bool) -> None:
-        """Backward-compatible wrapper for save button state."""
-        self.set_save_buttons_enabled(enabled)
+    def set_save_selected_button_enabled(self, enabled: bool, count: int = 0) -> None:
+        """Enable/disable the Save Selected button and update its label with the file count."""
+        self.save_selected_button.setEnabled(enabled)
+        label = f"Save Selected ({count})" if enabled and count > 0 else "Save Selected"
+        self.save_selected_button.setText(label)
 
     def set_process_buttons_enabled(self, enabled: bool) -> None:
         """Enable/disable all process action buttons."""
@@ -479,14 +495,6 @@ class MetadataPanel(QWidget):
     def set_suggest_button_enabled(self, enabled: bool) -> None:
         """Enable/disable AI suggestion action."""
         self.suggest_button.setEnabled(enabled)
-
-    def set_gps_lookup_button_enabled(self, enabled: bool) -> None:
-        """Enable/disable timeline GPS lookup action."""
-        self.suggest_gps_button.setEnabled(enabled)
-
-    def set_gps_apply_button_enabled(self, enabled: bool) -> None:
-        """Enable/disable apply-suggested-GPS action."""
-        self.apply_gps_button.setEnabled(enabled)
 
     def set_lookup_altitude_button_enabled(self, enabled: bool) -> None:
         """Enable/disable altitude lookup action."""

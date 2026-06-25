@@ -1,6 +1,6 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-22
+Last updated: 2026-06-25
 
 This document is the active implementation snapshot + next-step checklist.
 
@@ -470,6 +470,115 @@ Use this when importing a new full-history timeline export.
 
 - Flickr upload pipeline and metadata mapping is being handled in a separate
   project, not here. Not tracked as a phototags backlog item.
+
+## 8. GitHub Issues — Planned Work
+
+Open as of 2026-06-25. Grouped into clusters by implementation proximity.
+
+### Cluster A — ORF Preview Orientation (Issue #6)
+
+**Problem:** Portrait ORF files display rotated 90° in the preview panel and are also sent to the
+AI in the wrong orientation. The image loader (`workers/image_loader.py`) calls
+`ImageOps.exif_transpose` on the extracted preview JPEG at lines 68 and 86, but OM System's
+embedded preview JPEGs do not carry an `Orientation` tag of their own — the rotation metadata lives
+only in the outer ORF EXIF. So `exif_transpose` is a no-op on those previews and the image remains
+landscape-rotated.
+
+**Planned fix:**
+- `workers/image_loader.py` — `_load_with_exiftool_preview`: after extracting the preview bytes,
+  also read the ORF's `Orientation#` value via `exiftool -j -Orientation# <path>` (bundle into a
+  single `-j -b -PreviewImage -Orientation#` call to avoid a second subprocess). Map the EXIF
+  Orientation integer to the appropriate `Image.Transpose` operation and apply it manually before
+  returning, since `exif_transpose` cannot see the outer RAW EXIF from inside the embedded preview
+  stream.
+- `services/ai_suggestion_service.py` — `_to_web_jpeg`: apply the same orientation correction
+  (call `ImageOps.exif_transpose` after `Image.open`, or apply the manual rotation when the JPEG's
+  own EXIF Orientation is absent) before calling `thumbnail()` and re-encoding. The AI path bypasses
+  `image_loader.py` entirely, so this fix must be applied there independently.
+
+### Cluster B — GPS Auto-Apply on Capture Set Focus (Issue #7)
+
+**Problem:** The user's typical workflow is to click "Suggest GPS From Timeline" then "Apply
+Suggested GPS" for every capture set in sequence. These two steps could be automated on focus since
+they almost never need manual override.
+
+**Planned fix:**
+- In `main_window.py`, in the capture-set focus handler: after EXIF loads for a new set, if the set
+  has no existing EXIF GPS (lat/lon blank) and a timeline match is available, automatically run the
+  suggest + apply flow without user interaction. Gate with a per-session `set[str]` of "auto-GPS
+  already attempted" representative paths to avoid re-triggering on re-focus or grouping updates.
+- Keep the existing "Suggest GPS From Timeline" and "Apply Suggested GPS" buttons for manual
+  override, force-refresh, or corrections.
+- Replace the standalone "Lookup Altitude For Set" button with a compact `QToolButton` refresh icon
+  inlined at the trailing edge of the `Alt (m)` field to reclaim vertical space. The GPS status
+  label below it already surfaces error details, so the button only needs to be a compact trigger.
+
+### Cluster C — Smart Save After AI Apply / Manual Edit Propagation (Issues #8 and #10)
+
+**Problem (Issue #8):** After the AI returns description + keywords and Apply is clicked, a separate
+"Save Capture Set" click is still required. The user wants AI results to auto-save to the capture
+set immediately and the save buttons to stay disabled until a subsequent manual change is made.
+
+**Problem (Issue #10):** Manual edits to description or keywords after AI apply are not clearly
+tracked as "dirty", which means the user must remember to click Save to propagate them to the full
+set. The issue is closely linked to #8: both are about the save button's enabled/disabled state and
+when changes flow to group members.
+
+**Planned fix:**
+- After `_on_ai_result` applies AI suggestions to the editable fields, automatically trigger the
+  Save Capture Set code path (same as the button, not a duplicate write) rather than leaving save
+  to the user. Show a brief GPS/AI status message "AI suggestions saved to capture set." Disable
+  both Save buttons after the auto-save completes.
+- Introduce a per-capture-set "fields dirty since last save" boolean in `main_window.py`. Any
+  manual keypress in the description or keywords field sets it; any save (auto or manual) clears it.
+  Save buttons are enabled only while dirty is true.
+- Verify that "Save Capture Set" already reads from the live editable fields and writes them to
+  every group member via `MetadataBatchSaveTask`. If it does, Issue #10 is resolved by the
+  dirty-tracking improvement above (manual edit → dirty → Save Capture Set → all members updated).
+  Add a test in `tests/` to confirm full-set propagation of manually-edited fields.
+
+### Cluster D — Variant Strip Selection UX (Issue #11)
+
+**Problem:** The variant strip below the main preview (showing JPG / ORF thumbnails for a capture
+set) conflates "preview focus" with "metadata selection". Clicking a variant to preview it resets
+selection to that single item. The "9/9" counter text implies all are selected but the visual
+highlight only marks the last-clicked one. The user wants to browse previews within a set without
+unintentionally narrowing which variants receive metadata saves.
+
+**Planned fix:**
+- Separate two distinct states in the variant strip widgets:
+  - **Selection** (which variants are metadata targets for Save/AI/GPS apply): shown by the
+    existing accent-outline border. Defaults to **all members** of the capture set on load.
+  - **Preview focus** (which variant is shown in the main preview): shown by a lighter inner
+    highlight or a filled dot indicator, distinct from the selection ring.
+- Plain click on a strip thumbnail: changes preview focus only. Selection is untouched.
+- Cmd-click on a strip thumbnail: toggles that variant in/out of selection (for deliberately
+  applying metadata to a subset).
+- The source panel's tile highlight must not change when preview focus changes within the strip;
+  strip focus-change signals must not propagate to `main_window`'s single-selection handler.
+- Replace the "N/N" counter with a partial-selection hint shown only when selection is a proper
+  subset (e.g. "3 of 9 selected"), keeping the strip uncluttered when all are selected.
+
+### Cluster E — AI Model Dropdown Label (Issue #9)
+
+**Problem:** `phototags/ui/widgets/metadata_panel.py` line 83 has
+`QLabel("AI Suggestions (Ollama)")`. The hard-coded provider name is wrong now that OpenRouter is
+also a valid backend.
+
+**Planned fix:** Change to `QLabel("AI Suggestions")`. One-line change.
+
+---
+
+### Implementation order
+
+1. **Cluster E** — trivial, standalone, no risk. Do first.
+2. **Cluster A** — self-contained bug fix in two files, covered by existing preview + AI test paths.
+3. **Cluster B** — GPS auto-apply + altitude UI compaction. Needs care around re-trigger guards and
+   not breaking the manual-override buttons.
+4. **Cluster D** — variant strip UX redesign. Requires UI changes to the strip widget, selection
+   signal routing, and visual style updates; do after B since the two touch different areas.
+5. **Cluster C** — auto-save + dirty tracking. Most behaviour change risk; should come last so A–D
+   are stable and can be tested independently.
 
 ## 7. Working Assumptions
 

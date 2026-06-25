@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 from pathlib import Path
 import subprocess
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PySide6.QtCore import QObject, QRunnable, Signal
+
+from phototags.services.image_utils import apply_exif_orientation
 
 RAW_SUFFIXES = {".orf", ".raf", ".nef", ".cr2", ".cr3", ".arw", ".rw2"}
 
@@ -71,7 +74,13 @@ class ImageLoadTask(QRunnable):
             return normalized.copy()
 
     def _load_with_exiftool_preview(self, path: Path) -> Image.Image:
-        """Extract embedded RAW preview via exiftool and decode with Pillow."""
+        """Extract embedded RAW preview via exiftool and decode with Pillow.
+
+        OM System (and other manufacturers) embed a preview JPEG that does not
+        carry its own Orientation tag — the rotation is only recorded in the
+        outer RAW file's EXIF.  A second exiftool call reads that tag and applies
+        the correct transform so portrait shots render upright.
+        """
         result = subprocess.run(
             ["exiftool", "-b", "-PreviewImage", str(path)],
             capture_output=True,
@@ -81,9 +90,27 @@ class ImageLoadTask(QRunnable):
         if result.returncode != 0 or not result.stdout:
             raise UnidentifiedImageError(f"No preview extracted for {path.name}")
 
+        orientation = _read_raw_orientation(path)
         preview_buffer = BytesIO(result.stdout)
         with Image.open(preview_buffer) as preview:
-            normalized = ImageOps.exif_transpose(preview)
+            normalized = apply_exif_orientation(preview, orientation)
             if normalized.mode not in {"RGB", "RGBA"}:
                 normalized = normalized.convert("RGB")
             return normalized.copy()
+
+
+def _read_raw_orientation(path: Path) -> int:
+    """Return the EXIF Orientation integer from a RAW file, or 1 (upright) on any failure."""
+    try:
+        result = subprocess.run(
+            ["exiftool", "-j", "-Orientation#", str(path)],
+            capture_output=True,
+            check=False,
+            timeout=4,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return 1
+        data = json.loads(result.stdout)
+        return int(data[0].get("Orientation", 1))
+    except (json.JSONDecodeError, IndexError, KeyError, ValueError, subprocess.TimeoutExpired):
+        return 1
