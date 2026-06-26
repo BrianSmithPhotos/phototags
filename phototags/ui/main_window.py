@@ -152,6 +152,9 @@ class MainWindow(QMainWindow):
         # Tracks capture-set representatives that received GPS auto-apply this session
         # so re-focusing the same set doesn't trigger a second apply.
         self._gps_auto_applied_paths: set[Path] = set()
+        # Tracks representatives that received reverse-geocode auto-lookup this session
+        # (covers both timeline-applied GPS and images with pre-existing embedded GPS).
+        self._geocode_auto_applied_paths: set[Path] = set()
         # Set True after an AI-triggered auto-save so save buttons stay disabled
         # until the user manually edits description or keywords again.
         self._metadata_clean_since_ai_save: bool = False
@@ -503,7 +506,30 @@ class MainWindow(QMainWindow):
         )
         if self._selected_has_embedded_gps():
             self._gps_suggestions.pop(path_obj, None)
-            self.metadata_panel.set_gps_status("Existing EXIF GPS found; timeline suggestion skipped")
+            representative = self._get_representative_for(path_obj)
+            if representative is not None and representative not in self._geocode_auto_applied_paths:
+                self._geocode_auto_applied_paths.add(representative)
+                lat, lon = self._current_gps_lat_lon()
+                if lat is not None and lon is not None:
+                    target_paths = self._gps_target_paths(path_obj)
+                    self._start_reverse_geocode(
+                        image_path=path_obj,
+                        latitude=lat,
+                        longitude=lon,
+                        target_paths=target_paths,
+                        reason="Existing GPS found; looking up city/county/state...",
+                    )
+                    self._start_altitude_lookup(
+                        image_path=path_obj,
+                        latitude=lat,
+                        longitude=lon,
+                        target_paths=target_paths,
+                        reason=f"Looking up elevation for {len(target_paths)} file(s)...",
+                    )
+                else:
+                    self.metadata_panel.set_gps_status("Existing EXIF GPS found; coordinates could not be parsed")
+            else:
+                self.metadata_panel.set_gps_status("Existing EXIF GPS found; location already looked up")
         else:
             self._start_gps_suggest(image_path=path_obj, captured_at=ui_data.captured_at)
         self._restore_metadata_action_controls()
@@ -1043,6 +1069,9 @@ class MainWindow(QMainWindow):
             status_parts.append(f"{skipped_unreadable} skipped (metadata unreadable)")
         self.metadata_panel.set_gps_status("; ".join(status_parts))
         self._restore_metadata_action_controls()
+        representative = self._get_representative_for(selected)
+        if representative is not None:
+            self._geocode_auto_applied_paths.add(representative)
         self._start_reverse_geocode(
             image_path=selected,
             latitude=suggestion.latitude,
