@@ -67,6 +67,11 @@ def build_parser() -> ArgumentParser:
         help="Initial source directory, defaults to the SD card mount path.",
     )
     parser.add_argument(
+        "--dark",
+        action="store_true",
+        help="Launch in dark mode (light mode is the default).",
+    )
+    parser.add_argument(
         "--smoke-test-ms",
         type=int,
         default=0,

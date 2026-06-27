@@ -1,33 +1,17 @@
 """Shared UI style values.
 
-Light/dark mode is decided once at import time from a persisted QSettings
-preference (toggled via the "Dark Mode" checkbox in the source panel) — there
-is no live re-styling, the app must be restarted for a change to take effect.
-Every color is exported as a plain module-level string constant so existing
+Light/dark mode is decided once at import time by checking whether --dark was
+passed on the command line.  There is no live re-styling; restart with or
+without the flag to switch themes.  Every color is exported as a plain
+module-level string constant so existing
 `from phototags.ui.styles import ACCENT_CYAN, ...` imports keep working
 unchanged regardless of which palette is active.
 """
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
-
-from PySide6.QtCore import QSettings
-
-DARK_MODE_SETTINGS_KEY = "ui/dark_mode"
-SETTINGS_ORGANIZATION = "BrianSmithPhotos"
-SETTINGS_APPLICATION = "MacPhotoMaster"
-
-
-def _settings() -> QSettings:
-    """Build the app's QSettings store with explicit org/app name.
-
-    Explicit args (rather than QCoreApplication.setOrganizationName/
-    setApplicationName + the no-arg constructor) avoid depending on import
-    order: this module's palette selection runs at import time, which can
-    happen before any app-level setup code has a chance to run.
-    """
-    return QSettings(SETTINGS_ORGANIZATION, SETTINGS_APPLICATION)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,17 +90,7 @@ DARK_PALETTE = Palette(
 )
 
 
-def is_dark_mode_enabled() -> bool:
-    """Return the persisted dark-mode preference (default: off)."""
-    return bool(_settings().value(DARK_MODE_SETTINGS_KEY, False, type=bool))
-
-
-def set_dark_mode_enabled(enabled: bool) -> None:
-    """Persist the dark-mode preference; takes effect on next app launch."""
-    _settings().setValue(DARK_MODE_SETTINGS_KEY, enabled)
-
-
-_ACTIVE_PALETTE = DARK_PALETTE if is_dark_mode_enabled() else LIGHT_PALETTE
+_ACTIVE_PALETTE = DARK_PALETTE if "--dark" in sys.argv else LIGHT_PALETTE
 
 ACCENT_CYAN = _ACTIVE_PALETTE.accent_cyan
 ORANGE_PRIMARY = _ACTIVE_PALETTE.orange_primary

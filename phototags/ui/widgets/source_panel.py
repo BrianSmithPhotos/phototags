@@ -39,8 +39,6 @@ from phototags.ui.styles import (
     TILE_BG_DEFAULT,
     TILE_BG_SELECTED,
     TILE_BORDER,
-    is_dark_mode_enabled,
-    set_dark_mode_enabled,
 )
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 
@@ -268,20 +266,7 @@ class SourcePanel(QWidget):
         self.file_count_label.setObjectName("supportText")
         count_row.addWidget(self.file_count_label, 1)
 
-        self.stacked_checkbox = QCheckBox("Stacked?")
-        self.stacked_checkbox.setChecked(True)
-        self.stacked_checkbox.toggled.connect(self._on_stacked_toggled)
-        count_row.addWidget(self.stacked_checkbox)
-
-        self.dark_mode_checkbox = QCheckBox("Dark Mode")
-        self.dark_mode_checkbox.setChecked(is_dark_mode_enabled())
-        self.dark_mode_checkbox.toggled.connect(self._on_dark_mode_toggled)
-        count_row.addWidget(self.dark_mode_checkbox)
         layout.addLayout(count_row)
-
-        self.dark_mode_hint = QLabel("")
-        self.dark_mode_hint.setObjectName("supportText")
-        layout.addWidget(self.dark_mode_hint)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -588,17 +573,6 @@ class SourcePanel(QWidget):
         self._apply_panel_max_width()
         self._relayout_grid()
 
-    def _on_stacked_toggled(self, checked: bool) -> None:
-        """Re-layout the grid when the user toggles stacked capture-set display."""
-        self._stacked_enabled = checked
-        self._apply_panel_max_width()
-        self._relayout_grid()
-
-    def _on_dark_mode_toggled(self, checked: bool) -> None:
-        """Persist the dark-mode preference; styling itself only applies on next launch."""
-        set_dark_mode_enabled(checked)
-        self.dark_mode_hint.setText("Restart MacPhotoMaster to apply the new theme.")
-
     def _visible_paths(self) -> list[Path]:
         """Return paths to display given current stacked/grouping state."""
         if self._stacked_enabled and self._non_representative_paths:
@@ -615,7 +589,7 @@ class SourcePanel(QWidget):
         Stacking only collapses to one tile per capture set once grouping data has
         resolved enough to know which paths are non-representative; until then (or
         if a folder has no multi-file capture sets at all) every photo is visible,
-        so the 2-column grid applies regardless of the "Stacked?" checkbox state.
+        so the 2-column grid applies until grouping data is available.
         """
         if self._stacked_enabled and self._non_representative_paths:
             return 1
