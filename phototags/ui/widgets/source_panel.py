@@ -108,7 +108,7 @@ class ThumbnailTile(QFrame):
         layout.addWidget(self.name_label)
         self.set_group_size(1)
 
-        self._apply_selected_style(selected=False)
+        self._apply_tile_style()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Emit selected image path and click modifiers when tile is clicked."""
