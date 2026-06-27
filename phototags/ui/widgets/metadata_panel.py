@@ -245,7 +245,7 @@ class MetadataPanel(QWidget):
         self.save_selected_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         save_row.addWidget(self.save_selected_button, 1)
 
-        self.save_set_button = QPushButton("Save Capture Set")
+        self.save_set_button = QPushButton("Save Capture Set(s)")
         self.save_set_button.setEnabled(False)
         self.save_set_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         save_row.addWidget(self.save_set_button, 1)

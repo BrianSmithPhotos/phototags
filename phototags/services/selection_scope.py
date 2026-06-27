@@ -31,6 +31,28 @@ def expand_to_capture_groups(
     return tuple(dict.fromkeys(expanded))
 
 
+def save_set_scope(
+    selected_path: Path,
+    multi_selected_paths: Sequence[Path],
+    group_by_path: Mapping[Path, CaptureGroup],
+) -> tuple[Path, ...]:
+    """Paths included in a 'Save Capture Set(s)' action.
+
+    When the selected path is part of an active manual multi-selection (more
+    than one path), all selected paths are expanded to their full
+    capture-group membership.  Otherwise only the selected path's own capture
+    group is returned (or just the path itself when it has no group).
+
+    This same scope is used both to determine which paths the save job writes,
+    and to decide which drafts to propagate the edited description/keywords to
+    in `_sync_current_draft`.
+    """
+    if len(multi_selected_paths) > 1 and selected_path in multi_selected_paths:
+        return expand_to_capture_groups(multi_selected_paths, group_by_path)
+    group = group_by_path.get(selected_path)
+    return tuple(group.members) if group is not None else (selected_path,)
+
+
 def pick_ai_source_path(representative_path: Path, target_paths: Sequence[Path]) -> Path:
     """Prefer an ORF in the target set over the JPEG representative.
 

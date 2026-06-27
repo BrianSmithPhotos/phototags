@@ -25,6 +25,7 @@ from phototags.services.selection_scope import (
     expand_to_capture_groups,
     pick_ai_source_path,
     resolve_preview_redirect,
+    save_set_scope,
 )
 from phototags.services.timeline_location_service import GpsSuggestion, TimelineLocationService
 from phototags.services.timeline_sync_service import TimelineSyncService
@@ -642,14 +643,14 @@ class MainWindow(QMainWindow):
         self._start_save_scope("single image", [selected])
 
     def _on_save_set_clicked(self) -> None:
-        """Persist description + keywords for all files in the active capture set."""
+        """Persist description + keywords for all files in the active capture set(s)."""
         selected = self._selected_image_path
         if selected is None:
             self.metadata_panel.set_save_status("No file selected", is_error=True)
             return
-        group = self._group_by_path.get(selected)
-        paths = list(group.members) if group is not None else [selected]
-        self._start_save_scope("capture set", paths)
+        scope = save_set_scope(selected, self._multi_selected_paths, self._group_by_path)
+        scope_label = "capture set(s)" if self._is_manual_multi_target(selected) else "capture set"
+        self._start_save_scope(scope_label, list(scope))
 
     def _on_save_selected_clicked(self) -> None:
         """Persist description + keywords for the ring-selected files in the variant strip."""
@@ -1497,23 +1498,24 @@ class MainWindow(QMainWindow):
             gps_longitude=gps_longitude,
             gps_altitude=gps_altitude,
         )
-        # Propagate description/keywords to all other members of the capture set
-        # so that Save Capture Set writes the same editorial text to every file.
-        group = self._group_by_path.get(self._selected_image_path)
-        if group is not None:
-            for member_path in group.members:
-                if member_path == self._selected_image_path:
-                    continue
-                existing = self._metadata_drafts.get(member_path)
-                if existing is None:
-                    continue
-                self._metadata_drafts[member_path] = MetadataDraft(
-                    description=description,
-                    keywords=keywords,
-                    gps_latitude=existing.gps_latitude,
-                    gps_longitude=existing.gps_longitude,
-                    gps_altitude=existing.gps_altitude,
-                )
+        # Propagate description/keywords to all other files in the applicable scope.
+        # When a manual multi-selection is active the scope is all selected capture
+        # groups; otherwise it is just the current image's own group.
+        for member_path in save_set_scope(
+            self._selected_image_path, self._multi_selected_paths, self._group_by_path
+        ):
+            if member_path == self._selected_image_path:
+                continue
+            existing = self._metadata_drafts.get(member_path)
+            if existing is None:
+                continue
+            self._metadata_drafts[member_path] = MetadataDraft(
+                description=description,
+                keywords=keywords,
+                gps_latitude=existing.gps_latitude,
+                gps_longitude=existing.gps_longitude,
+                gps_altitude=existing.gps_altitude,
+            )
 
     def _ai_targets_for(self, selected_path: Path) -> tuple[Path, tuple[Path, ...]]:
         """Return representative and member list for AI apply scope.
@@ -1670,10 +1672,10 @@ class MainWindow(QMainWindow):
             and has_lookup_target
         )
         selected = self._selected_image_path
-        group = self._group_by_path.get(selected) if selected is not None else None
         all_set_paths: set[Path] = (
-            set(group.members) if group is not None
-            else ({selected} if selected is not None else set())
+            set(save_set_scope(selected, self._multi_selected_paths, self._group_by_path))
+            if selected is not None
+            else set()
         )
         is_partial = (
             bool(self._variant_selected_paths)
@@ -2026,21 +2028,9 @@ class MainWindow(QMainWindow):
             self.preview_panel.set_variants([], None, {})
             return
 
-        group = self._group_by_path.get(selected_path)
-        if group is None:
-            self._variant_selected_paths = {selected_path}
-            self.preview_panel.set_variants(
-                [selected_path],
-                selected_path,
-                {selected_path: self.source_panel.thumbnail_for_path(selected_path)},
-            )
-            return
-        members = list(group.members)
+        members = list(save_set_scope(selected_path, self._multi_selected_paths, self._group_by_path))
         self._variant_selected_paths = set(members)
-        thumbnails = {
-            path: self.source_panel.thumbnail_for_path(path)
-            for path in members
-        }
+        thumbnails = {path: self.source_panel.thumbnail_for_path(path) for path in members}
         self.preview_panel.set_variants(members, selected_path, thumbnails)
 
     def _update_rename_preview(self) -> None:

@@ -7,6 +7,7 @@ from phototags.services.selection_scope import (
     range_between,
     resolve_preview_redirect,
     resolve_range_anchor,
+    save_set_scope,
 )
 
 
@@ -178,3 +179,90 @@ def test_shift_click_ranges_correctly_after_a_redirect_left_the_anchor_on_a_hidd
     selection = range_between(anchor, visible[2], visible)
 
     assert selection == {visible[0], visible[1], visible[2]}
+
+
+# --- save_set_scope ---
+
+
+def test_save_set_scope_single_selection_returns_current_group_only() -> None:
+    set_a = _group("grp-0001", (Path("a1.JPG"), Path("a1.ORF")))
+    set_b = _group("grp-0002", (Path("b1.JPG"), Path("b1.ORF")))
+    group_by_path = {p: set_a for p in set_a.members} | {p: set_b for p in set_b.members}
+
+    # Only one capture set selected — scope is that group only, not set_b.
+    scope = save_set_scope(Path("a1.JPG"), (Path("a1.JPG"),), group_by_path)
+
+    assert set(scope) == {Path("a1.JPG"), Path("a1.ORF")}
+    assert not any(p in scope for p in set_b.members)
+
+
+def test_save_set_scope_single_path_no_group_returns_only_that_path() -> None:
+    standalone = Path("standalone.JPG")
+
+    scope = save_set_scope(standalone, (standalone,), {})
+
+    assert scope == (standalone,)
+
+
+def test_save_set_scope_multi_selection_expands_all_selected_groups() -> None:
+    """Regression guard: Save Capture Set(s) with multiple sets selected must write all of them.
+
+    Before this fix, `_on_save_set_clicked` only looked at the currently
+    displayed image's capture group, so images in the other selected sets were
+    silently skipped even when the user had cmd-clicked multiple capture sets.
+    """
+    set_a = _group("grp-0001", (Path("a1.JPG"), Path("a1.ORF")))
+    set_b = _group("grp-0002", (Path("b1.JPG"), Path("b1.ORF")))
+    group_by_path = {p: set_a for p in set_a.members} | {p: set_b for p in set_b.members}
+
+    # Both representatives are in the multi-selection.
+    scope = save_set_scope(
+        Path("a1.JPG"),
+        (Path("a1.JPG"), Path("b1.JPG")),
+        group_by_path,
+    )
+
+    assert set(scope) == {Path("a1.JPG"), Path("a1.ORF"), Path("b1.JPG"), Path("b1.ORF")}
+
+
+def test_save_set_scope_variant_strip_must_include_members_of_all_selected_groups() -> None:
+    """Regression guard: variant strip was only showing the focused image's own group.
+
+    _refresh_variant_strip previously called group_by_path.get(selected_path) directly
+    and passed only that group's members to set_variants — silently hiding the other
+    selected group's files even when two capture sets were cmd-clicked. It now
+    delegates to save_set_scope so both groups appear. The old call would have
+    returned only {a1.JPG, a1.ORF} here; the correct result includes set_b's files too.
+    """
+    set_a = _group("grp-0001", (Path("a1.JPG"), Path("a1.ORF")))
+    set_b = _group("grp-0002", (Path("b1.JPG"), Path("b1.ORF")))
+    group_by_path = {p: set_a for p in set_a.members} | {p: set_b for p in set_b.members}
+
+    scope = save_set_scope(
+        Path("a1.JPG"),
+        (Path("a1.JPG"), Path("b1.JPG")),
+        group_by_path,
+    )
+
+    # Both groups' members must be present — not just a1.JPG + a1.ORF.
+    assert set(scope) == {Path("a1.JPG"), Path("a1.ORF"), Path("b1.JPG"), Path("b1.ORF")}
+
+
+def test_save_set_scope_multi_selection_does_not_include_unselected_group() -> None:
+    set_a = _group("grp-0001", (Path("a1.JPG"), Path("a1.ORF")))
+    set_b = _group("grp-0002", (Path("b1.JPG"), Path("b1.ORF")))
+    set_c = _group("grp-0003", (Path("c1.JPG"), Path("c1.ORF")))
+    group_by_path = (
+        {p: set_a for p in set_a.members}
+        | {p: set_b for p in set_b.members}
+        | {p: set_c for p in set_c.members}
+    )
+
+    # set_c is visible but not part of the multi-selection.
+    scope = save_set_scope(
+        Path("a1.JPG"),
+        (Path("a1.JPG"), Path("b1.JPG")),
+        group_by_path,
+    )
+
+    assert not any(p in scope for p in set_c.members)
