@@ -206,6 +206,15 @@ class ImagePreviewWidget(QWidget):
             """
         )
 
+    def set_skip_mode(self, is_skipped: bool) -> None:
+        """Switch skip button labels between skip and unskip for the focused image."""
+        if is_skipped:
+            self.skip_single_button.setText("Unskip Image")
+            self.skip_set_button.setText("Unskip Capture Set")
+        else:
+            self.skip_single_button.setText("Skip Image (Cmd+Backspace)")
+            self.skip_set_button.setText("Skip Capture Set")
+
     def set_loading_state(self, filename: str) -> None:
         """Show loading state while preview is decoded in background."""
         self._base_pixmap = None

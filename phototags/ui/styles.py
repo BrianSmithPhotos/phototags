@@ -41,6 +41,8 @@ class Palette:
     variant_button_checked_bg: str
     variant_button_checked_text: str
     preview_background: str
+    tile_skipped_border: str
+    tile_skipped_bg: str
 
 
 LIGHT_PALETTE = Palette(
@@ -64,6 +66,8 @@ LIGHT_PALETTE = Palette(
     variant_button_checked_bg="#dff7f6",
     variant_button_checked_text="#2e4746",
     preview_background="white",
+    tile_skipped_border="#c8b0a0",
+    tile_skipped_bg="#f7ede8",
 )
 
 # Dark grey background per the user's request; other colors lightened/brightened
@@ -90,6 +94,8 @@ DARK_PALETTE = Palette(
     variant_button_checked_bg="#1f3a39",
     variant_button_checked_text="#bdf2f0",
     preview_background="#2f3133",
+    tile_skipped_border="#5a3e36",
+    tile_skipped_bg="#2a1e1a",
 )
 
 
@@ -115,3 +121,5 @@ VARIANT_BUTTON_BORDER = _ACTIVE_PALETTE.variant_button_border
 VARIANT_BUTTON_CHECKED_BG = _ACTIVE_PALETTE.variant_button_checked_bg
 VARIANT_BUTTON_CHECKED_TEXT = _ACTIVE_PALETTE.variant_button_checked_text
 PREVIEW_BACKGROUND = _ACTIVE_PALETTE.preview_background
+TILE_SKIPPED_BORDER = _ACTIVE_PALETTE.tile_skipped_border
+TILE_SKIPPED_BG = _ACTIVE_PALETTE.tile_skipped_bg

@@ -1690,6 +1690,8 @@ class MainWindow(QMainWindow):
         # already falls back to skipping just that file, so the flow doesn't require
         # switching to a different button depending on capture-set size.
         self.preview_panel.skip_set_button.setEnabled(allow_actions)
+        is_skipped = selected is not None and self.source_panel.is_path_skipped(selected)
+        self.preview_panel.set_skip_mode(is_skipped)
 
     def _selected_has_embedded_gps(self) -> bool:
         """Return True when selected image already contains EXIF lat/lon values."""
@@ -1913,18 +1915,24 @@ class MainWindow(QMainWindow):
         return unique
 
     def _on_skip_single_selected(self) -> None:
-        """Skip selected file for this session without deleting from SD."""
+        """Skip or unskip the selected file (toggles when Show Skipped is active)."""
         if self._selected_image_path is None:
             return
         if self._process_inflight or self._ai_inflight or self._save_inflight:
             return
-        skipped_path = self._selected_image_path
-        self.source_panel.mark_skipped(skipped_path)
-        self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
-        self.metadata_panel.set_save_status(f"Skipped {skipped_path.name}")
+        path = self._selected_image_path
+        if self.source_panel.is_path_skipped(path):
+            self.source_panel.mark_unskipped(path)
+            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
+            self.metadata_panel.set_save_status(f"Unskipped {path.name}")
+            self._restore_metadata_action_controls()
+        else:
+            self.source_panel.mark_skipped(path)
+            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
+            self.metadata_panel.set_save_status(f"Skipped {path.name}")
 
     def _on_skip_set_selected(self) -> None:
-        """Skip all files in the selected capture set for this session."""
+        """Skip or unskip all files in the selected capture set (toggles when Show Skipped is active)."""
         selected = self._selected_image_path
         if selected is None:
             return
@@ -1932,15 +1940,19 @@ class MainWindow(QMainWindow):
             return
 
         group = self._group_by_path.get(selected)
-        if group is None or len(group.members) <= 1:
-            self.source_panel.mark_skipped(selected)
-            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
-            self.metadata_panel.set_save_status(f"Skipped {selected.name}")
-            return
+        members = list(group.members) if group is not None and len(group.members) > 1 else [selected]
 
-        self.source_panel.mark_skipped_many(list(group.members))
-        self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
-        self.metadata_panel.set_save_status(f"Skipped capture set ({len(group.members)} files)")
+        if self.source_panel.is_path_skipped(selected):
+            self.source_panel.mark_unskipped_many(members)
+            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
+            label = f"Unskipped {selected.name}" if len(members) == 1 else f"Unskipped capture set ({len(members)} files)"
+            self.metadata_panel.set_save_status(label)
+            self._restore_metadata_action_controls()
+        else:
+            self.source_panel.mark_skipped_many(members)
+            self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
+            label = f"Skipped {selected.name}" if len(members) == 1 else f"Skipped capture set ({len(members)} files)"
+            self.metadata_panel.set_save_status(label)
 
     def _on_variant_selected(self, image_path: Path) -> None:
         """Switch preview to selected capture-set variant.

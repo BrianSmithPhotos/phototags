@@ -39,6 +39,8 @@ from phototags.ui.styles import (
     TILE_BG_DEFAULT,
     TILE_BG_SELECTED,
     TILE_BORDER,
+    TILE_SKIPPED_BG,
+    TILE_SKIPPED_BORDER,
 )
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 
@@ -80,6 +82,8 @@ class ThumbnailTile(QFrame):
         super().__init__(parent)
         self.image_path = image_path
         self._group_size = 1
+        self._is_selected = False
+        self._is_skipped = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -138,12 +142,21 @@ class ThumbnailTile(QFrame):
 
     def set_selected(self, selected: bool) -> None:
         """Apply selected or normal tile styling."""
-        self._apply_selected_style(selected=selected)
+        self._is_selected = selected
+        self._apply_tile_style()
 
-    def _apply_selected_style(self, selected: bool) -> None:
-        if selected:
+    def set_skipped(self, skipped: bool) -> None:
+        """Apply or remove the skipped visual indicator."""
+        self._is_skipped = skipped
+        self._apply_tile_style()
+
+    def _apply_tile_style(self) -> None:
+        if self._is_selected:
             border = ACCENT_CYAN
-            bg = TILE_BG_SELECTED
+            bg = TILE_SKIPPED_BG if self._is_skipped else TILE_BG_SELECTED
+        elif self._is_skipped:
+            border = TILE_SKIPPED_BORDER
+            bg = TILE_SKIPPED_BG
         else:
             border = TILE_BORDER
             bg = TILE_BG_DEFAULT
@@ -200,6 +213,7 @@ class SourcePanel(QWidget):
         self._skipped_paths: set[Path] = set()
         self._active_thumb_jobs: dict[int, tuple[ImageLoadTask, ImageLoadSignals]] = {}
         self._stacked_enabled = True
+        self._show_skipped = False
         self._non_representative_paths: set[Path] = set()
         self._member_to_visible_path: dict[Path, Path] = {}
         self._build_ui()
@@ -265,6 +279,12 @@ class SourcePanel(QWidget):
         self.file_count_label = QLabel("0 files")
         self.file_count_label.setObjectName("supportText")
         count_row.addWidget(self.file_count_label, 1)
+
+        self.show_skipped_button = QPushButton("Show Skipped")
+        self.show_skipped_button.setCheckable(True)
+        self.show_skipped_button.setChecked(False)
+        self.show_skipped_button.toggled.connect(self._on_show_skipped_toggled)
+        count_row.addWidget(self.show_skipped_button)
 
         layout.addLayout(count_row)
 
@@ -352,6 +372,9 @@ class SourcePanel(QWidget):
 
     def _load_folder_images(self, folder_path: Path) -> None:
         """Build thumbnail tiles and start background image decoding."""
+        if self._show_skipped:
+            self._show_skipped = False
+            self.show_skipped_button.setChecked(False)
         self._current_folder = folder_path
         self._thumb_request_id += 1
         request_id = self._thumb_request_id
@@ -573,6 +596,46 @@ class SourcePanel(QWidget):
         self._apply_panel_max_width()
         self._relayout_grid()
 
+    def _on_show_skipped_toggled(self, checked: bool) -> None:
+        self._show_skipped = checked
+        if checked:
+            self._load_skipped_tiles()
+        else:
+            self._unload_skipped_tiles()
+
+    def _load_skipped_tiles(self) -> None:
+        """Add tiles for skipped paths in the current folder when Show Skipped is enabled."""
+        folder = self._current_folder
+        current_keys = {str(p) for p in self._current_image_paths}
+        skipped_here = sorted(
+            (
+                p for p in self._skipped_paths
+                if p.parent == folder and p.exists() and str(p) not in current_keys
+            ),
+            key=lambda p: p.name.lower(),
+        )
+        if not skipped_here:
+            return
+        self._current_image_paths = sorted(
+            self._current_image_paths + skipped_here,
+            key=lambda p: p.name.lower(),
+        )
+        for path in skipped_here:
+            tile = ThumbnailTile(image_path=path)
+            tile.set_group_size(self._group_sizes.get(path, 1))
+            tile.clicked.connect(self._on_tile_clicked)
+            self._thumb_tiles[str(path)] = tile
+            self._start_thumbnail_load(image_path=path, request_id=self._thumb_request_id)
+        self._relayout_grid()
+        self._apply_multi_selection_style()
+        self._update_file_count_label()
+
+    def _unload_skipped_tiles(self) -> None:
+        """Remove skipped tiles from the grid when Show Skipped is disabled."""
+        skipped_visible = [p for p in self._current_image_paths if p in self._skipped_paths]
+        if skipped_visible:
+            self._remove_from_session(skipped_visible)
+
     def _visible_paths(self) -> list[Path]:
         """Return paths to display given current stacked/grouping state."""
         if self._stacked_enabled and self._non_representative_paths:
@@ -635,6 +698,9 @@ class SourcePanel(QWidget):
         for key, tile in self._thumb_tiles.items():
             tile.setVisible(key in visible_keys)
 
+        for key, tile in self._thumb_tiles.items():
+            tile.set_skipped(Path(key) in self._skipped_paths)
+
     def select_path(self, image_path: Path, *, emit_signal: bool = True) -> bool:
         """Select a file tile programmatically when it exists in current grid."""
         key = str(image_path)
@@ -650,18 +716,53 @@ class SourcePanel(QWidget):
         return self._thumbnail_pixmaps.get(image_path)
 
     def mark_skipped(self, image_path: Path) -> None:
-        """Hide a file from this and future sessions without touching disk."""
+        """Mark a file as skipped; hide it unless Show Skipped is active."""
         self._skipped_paths.add(image_path)
         self._persist_skipped_for_current_folder()
-        self._remove_from_session([image_path])
+        if self._show_skipped:
+            tile = self._thumb_tiles.get(str(image_path))
+            if tile is not None:
+                tile.set_skipped(True)
+        else:
+            self._remove_from_session([image_path])
 
     def mark_skipped_many(self, image_paths: list[Path]) -> None:
-        """Hide many files from this and future sessions without touching disk."""
+        """Mark many files as skipped; hide them unless Show Skipped is active."""
         if not image_paths:
             return
         self._skipped_paths.update(image_paths)
         self._persist_skipped_for_current_folder()
-        self._remove_from_session(image_paths)
+        if self._show_skipped:
+            for path in image_paths:
+                tile = self._thumb_tiles.get(str(path))
+                if tile is not None:
+                    tile.set_skipped(True)
+        else:
+            self._remove_from_session(image_paths)
+
+    def mark_unskipped(self, image_path: Path) -> None:
+        """Remove a file from the skipped set and restore its normal tile appearance."""
+        self._skipped_paths.discard(image_path)
+        self._persist_skipped_for_current_folder()
+        tile = self._thumb_tiles.get(str(image_path))
+        if tile is not None:
+            tile.set_skipped(False)
+
+    def mark_unskipped_many(self, image_paths: list[Path]) -> None:
+        """Remove many files from the skipped set and restore their tile appearances."""
+        if not image_paths:
+            return
+        for path in image_paths:
+            self._skipped_paths.discard(path)
+        self._persist_skipped_for_current_folder()
+        for path in image_paths:
+            tile = self._thumb_tiles.get(str(path))
+            if tile is not None:
+                tile.set_skipped(False)
+
+    def is_path_skipped(self, image_path: Path) -> bool:
+        """Return True when image_path is currently in the skipped set."""
+        return image_path in self._skipped_paths
 
     def _persist_skipped_for_current_folder(self) -> None:
         """Save the current folder's skipped filenames so they stay skipped next session."""
