@@ -515,8 +515,8 @@ class SourcePanel(QWidget):
         self._selected_path = image_path
         self._apply_multi_selection_style()
         self._update_file_count_label()
-        self.photo_selected.emit(image_path)
         self.selection_changed.emit(self._ordered_selection())
+        self.photo_selected.emit(image_path)
 
     def _ordered_selection(self) -> tuple[Path, ...]:
         """Return the current multi-selection in on-screen display order."""
