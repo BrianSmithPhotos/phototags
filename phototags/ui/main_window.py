@@ -473,7 +473,16 @@ class MainWindow(QMainWindow):
             return
         path_obj = Path(image_path)
         draft = self._metadata_drafts.get(path_obj)
-        keywords_source = draft.keywords if draft is not None else ui_data.keywords
+        raw_keywords = draft.keywords if draft is not None else ui_data.keywords
+        # Strip this file's own auto-tokens from the source so they are never
+        # stored in the draft.  They are re-derived fresh here for display and
+        # re-applied from EXIF by the save worker at write time.  Without this,
+        # _sync_current_draft propagates the tokens to group members whose own
+        # EXIF may carry a different value, producing multiple art-filter entries.
+        keywords_source = self._strip_auto_tokens_for(
+            raw_keywords,
+            [ui_data.art_filter_token, ui_data.camera_model, ui_data.lens_model],
+        )
         keywords_text = self._keywords_with_auto_tokens(
             keywords_source,
             ui_data.art_filter_token,
@@ -511,7 +520,7 @@ class MainWindow(QMainWindow):
         self.metadata_panel.set_exif_dump(dump_text)
         self._metadata_drafts[path_obj] = MetadataDraft(
             description=description_text,
-            keywords=keywords_text,
+            keywords=keywords_source,
             gps_latitude=gps_latitude_text,
             gps_longitude=gps_longitude_text,
             gps_altitude=gps_altitude_text,
@@ -579,6 +588,11 @@ class MainWindow(QMainWindow):
 
         self._capture_groups = result.groups
         self._group_by_path = dict(result.by_path)
+
+        # If GPS was auto-applied before group info was available, the apply only
+        # covered the selected image.  Now that the group is known, fill in the rest.
+        if self._selected_image_path is not None:
+            self._catchup_gps_for_group(self._selected_image_path)
 
         now = time.monotonic()
         if not is_final_batch and now - self._group_ui_last_applied_at < GROUP_UI_APPLY_MIN_INTERVAL_S:
@@ -1177,6 +1191,42 @@ class MainWindow(QMainWindow):
             reason=f"Looking up city/county/state for {len(target_paths)} file(s)...",
         )
 
+    def _catchup_gps_for_group(self, selected: Path) -> None:
+        """Propagate a GPS suggestion to group members that missed the auto-apply.
+
+        The GPS auto-apply in _on_gps_suggested calls _gps_target_paths, which
+        uses _group_by_path.  If _on_groups_loaded has not yet fired at that
+        point, the group is unknown and GPS is applied only to the selected image.
+        This method is called from _on_groups_loaded whenever grouping data
+        changes; it finds any such under-applied GPS and fills in the missing members.
+        """
+        suggestion = self._gps_suggestions.get(selected)
+        if suggestion is None:
+            return
+        representative = self._get_representative_for(selected)
+        if representative is None or representative not in self._gps_auto_applied_paths:
+            return
+        group = self._group_by_path.get(selected)
+        if group is None or len(group.members) <= 1:
+            return
+        latitude_text = f"{suggestion.latitude:.7f}"
+        longitude_text = f"{suggestion.longitude:.7f}"
+        for member in group.members:
+            if member == selected:
+                continue
+            if self._path_has_embedded_gps(member, probe=False):
+                continue
+            draft = self._metadata_drafts.get(member)
+            if draft is None:
+                draft = self._ensure_draft_for_path(member)
+            if draft is None:
+                continue
+            if draft.gps_latitude or draft.gps_longitude:
+                continue
+            draft.gps_latitude = latitude_text
+            draft.gps_longitude = longitude_text
+            draft.gps_altitude = ""
+
     def _start_gps_suggest(self, *, image_path: Path, captured_at: str) -> None:
         """Start one background timeline lookup for selected image capture time."""
         if not captured_at.strip():
@@ -1507,9 +1557,21 @@ class MainWindow(QMainWindow):
         gps_latitude = self.metadata_panel.gps_latitude_text()
         gps_longitude = self.metadata_panel.gps_longitude_text()
         gps_altitude = self.metadata_panel.gps_altitude_text()
+        # The panel's keywords field includes this file's auto-tokens (art filter,
+        # camera, lens) which were added for display only.  Strip them before storing
+        # so the draft holds only user/AI content keywords.  They are re-derived from
+        # EXIF at display time (_on_exif_loaded) and at write time (the save worker).
+        exif = self._current_exif_ui_data
+        if exif is not None:
+            pure_keywords = self._strip_auto_tokens_for(
+                keywords,
+                [exif.art_filter_token, exif.camera_model, exif.lens_model],
+            )
+        else:
+            pure_keywords = keywords
         self._metadata_drafts[self._selected_image_path] = MetadataDraft(
             description=description,
-            keywords=keywords,
+            keywords=pure_keywords,
             gps_latitude=gps_latitude,
             gps_longitude=gps_longitude,
             gps_altitude=gps_altitude,
@@ -1527,7 +1589,7 @@ class MainWindow(QMainWindow):
                 continue
             self._metadata_drafts[member_path] = MetadataDraft(
                 description=description,
-                keywords=keywords,
+                keywords=pure_keywords,
                 gps_latitude=existing.gps_latitude,
                 gps_longitude=existing.gps_longitude,
                 gps_altitude=existing.gps_altitude,
@@ -1604,9 +1666,13 @@ class MainWindow(QMainWindow):
         if existing is not None:
             return existing
         if path == self._selected_image_path and self._current_exif_ui_data is not None:
+            cur_exif = self._current_exif_ui_data
             draft = MetadataDraft(
                 description=self.metadata_panel.description_text(),
-                keywords=self.metadata_panel.keywords_text(),
+                keywords=self._strip_auto_tokens_for(
+                    self.metadata_panel.keywords_text(),
+                    [cur_exif.art_filter_token, cur_exif.camera_model, cur_exif.lens_model],
+                ),
                 gps_latitude=self.metadata_panel.gps_latitude_text(),
                 gps_longitude=self.metadata_panel.gps_longitude_text(),
                 gps_altitude=self.metadata_panel.gps_altitude_text(),
@@ -1622,12 +1688,7 @@ class MainWindow(QMainWindow):
         self._embedded_altitude_by_path[path] = bool(ui_data.gps_altitude.strip())
         draft = MetadataDraft(
             description=ui_data.description,
-            keywords=self._keywords_with_auto_tokens(
-                ui_data.keywords,
-                ui_data.art_filter_token,
-                ui_data.camera_model,
-                ui_data.lens_model,
-            ),
+            keywords=ui_data.keywords,
             gps_latitude=ui_data.gps_latitude,
             gps_longitude=ui_data.gps_longitude,
             gps_altitude=ui_data.gps_altitude,
@@ -1750,6 +1811,15 @@ class MainWindow(QMainWindow):
             f"iso={data.iso}",
         ]
         return "; ".join(part for part in parts if part and not part.endswith("="))
+
+    def _strip_auto_tokens_for(self, keywords_text: str, auto_tokens: list[str]) -> str:
+        """Return keywords_text with the given auto-token values removed (case-insensitive)."""
+        tokens_to_strip = {t.casefold() for t in auto_tokens if t.strip()}
+        if not tokens_to_strip:
+            return keywords_text
+        return ", ".join(
+            k for k in self._parse_keywords(keywords_text) if k.casefold() not in tokens_to_strip
+        )
 
     def _parse_keywords(self, text: str) -> list[str]:
         """Split comma-delimited keywords into normalized list."""
