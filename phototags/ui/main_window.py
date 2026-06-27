@@ -14,6 +14,12 @@ from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QWidget
 
 from phototags.services.ai_suggestion_service import AiSuggestionService, DEFAULT_PROVIDER_MODEL
+from phototags.services.auto_metadata import (
+    keywords_with_auto_tokens,
+    merge_keywords,
+    parse_keywords,
+    strip_auto_tokens,
+)
 from phototags.services.capture_group_service import CaptureGroup, CaptureGroupingResult, CaptureGroupService
 from phototags.services.elevation_lookup_service import ElevationLookupService
 from phototags.services.exif_service import ExifService, ExifUiData
@@ -479,15 +485,16 @@ class MainWindow(QMainWindow):
         # re-applied from EXIF by the save worker at write time.  Without this,
         # _sync_current_draft propagates the tokens to group members whose own
         # EXIF may carry a different value, producing multiple art-filter entries.
-        keywords_source = self._strip_auto_tokens_for(
+        keywords_source = strip_auto_tokens(
             raw_keywords,
             [ui_data.art_filter_token, ui_data.camera_model, ui_data.lens_model],
         )
-        keywords_text = self._keywords_with_auto_tokens(
+        keywords_text = keywords_with_auto_tokens(
             keywords_source,
-            ui_data.art_filter_token,
-            ui_data.camera_model,
-            ui_data.lens_model,
+            art_filter_token=ui_data.art_filter_token,
+            camera_token=ui_data.camera_model,
+            lens_token=ui_data.lens_model,
+            sooc_token="",
         )
         description_text = draft.description if draft is not None else ui_data.description
         gps_latitude_text = draft.gps_latitude if draft is not None else ui_data.gps_latitude
@@ -931,15 +938,16 @@ class MainWindow(QMainWindow):
             art_filter = payload.art_filter_by_path.get(path_text, "")
             camera_model = payload.camera_by_path.get(path_text, "")
             lens_model = payload.lens_by_path.get(path_text, "")
-            with_art_filter = self._keywords_with_auto_tokens(
+            with_art_filter = keywords_with_auto_tokens(
                 base_keywords,
-                art_filter,
-                camera_model,
-                lens_model,
+                art_filter_token=art_filter,
+                camera_token=camera_model,
+                lens_token=lens_model,
+                sooc_token="",
             )
-            merged_keywords = self._merge_keywords(
-                self._parse_keywords(with_art_filter),
-                payload.suggestion.keywords,
+            merged_keywords = merge_keywords(
+                parse_keywords(with_art_filter),
+                list(payload.suggestion.keywords),
             )
             self._metadata_drafts[path_obj] = MetadataDraft(
                 description=payload.suggestion.description,
@@ -1422,8 +1430,8 @@ class MainWindow(QMainWindow):
             if draft is None:
                 skipped_unreadable += 1
                 continue
-            merged_keywords = self._merge_keywords(
-                self._parse_keywords(draft.keywords),
+            merged_keywords = merge_keywords(
+                parse_keywords(draft.keywords),
                 tokens,
             )
             draft.keywords = ", ".join(merged_keywords)
@@ -1563,7 +1571,7 @@ class MainWindow(QMainWindow):
         # EXIF at display time (_on_exif_loaded) and at write time (the save worker).
         exif = self._current_exif_ui_data
         if exif is not None:
-            pure_keywords = self._strip_auto_tokens_for(
+            pure_keywords = strip_auto_tokens(
                 keywords,
                 [exif.art_filter_token, exif.camera_model, exif.lens_model],
             )
@@ -1669,7 +1677,7 @@ class MainWindow(QMainWindow):
             cur_exif = self._current_exif_ui_data
             draft = MetadataDraft(
                 description=self.metadata_panel.description_text(),
-                keywords=self._strip_auto_tokens_for(
+                keywords=strip_auto_tokens(
                     self.metadata_panel.keywords_text(),
                     [cur_exif.art_filter_token, cur_exif.camera_model, cur_exif.lens_model],
                 ),
@@ -1710,19 +1718,6 @@ class MainWindow(QMainWindow):
             seen.add(key)
             contexts.append(context)
         return " | ".join(contexts)
-
-    def _keywords_with_auto_tokens(
-        self,
-        keywords_text: str,
-        art_filter_token: str,
-        camera_token: str,
-        lens_token: str,
-    ) -> str:
-        """Append art filter, camera, and lens tokens to comma-delimited keywords."""
-        keywords = self._parse_keywords(keywords_text)
-        auto_tokens = [art_filter_token.strip(), camera_token.strip(), lens_token.strip()]
-        merged = self._merge_keywords(keywords, [token for token in auto_tokens if token])
-        return ", ".join(merged)
 
     def _restore_metadata_action_controls(self) -> None:
         """Restore right-panel action enabled states based on app state."""
@@ -1811,32 +1806,6 @@ class MainWindow(QMainWindow):
             f"iso={data.iso}",
         ]
         return "; ".join(part for part in parts if part and not part.endswith("="))
-
-    def _strip_auto_tokens_for(self, keywords_text: str, auto_tokens: list[str]) -> str:
-        """Return keywords_text with the given auto-token values removed (case-insensitive)."""
-        tokens_to_strip = {t.casefold() for t in auto_tokens if t.strip()}
-        if not tokens_to_strip:
-            return keywords_text
-        return ", ".join(
-            k for k in self._parse_keywords(keywords_text) if k.casefold() not in tokens_to_strip
-        )
-
-    def _parse_keywords(self, text: str) -> list[str]:
-        """Split comma-delimited keywords into normalized list."""
-        values = [part.strip() for part in text.replace("\n", ",").split(",")]
-        return [value for value in values if value]
-
-    def _merge_keywords(self, existing: list[str], suggested: list[str]) -> list[str]:
-        """Merge keyword lists preserving order and removing case-insensitive duplicates."""
-        merged: list[str] = []
-        seen: set[str] = set()
-        for keyword in [*existing, *suggested]:
-            lowered = keyword.casefold()
-            if lowered in seen:
-                continue
-            seen.add(lowered)
-            merged.append(keyword)
-        return merged
 
     def _on_process_single_clicked(self) -> None:
         """Process and copy only the currently selected image."""

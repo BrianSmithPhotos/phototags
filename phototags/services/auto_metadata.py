@@ -51,6 +51,14 @@ def keywords_with_auto_tokens(
     return ", ".join(merged)
 
 
+def strip_auto_tokens(keywords_text: str, auto_tokens: list[str]) -> str:
+    """Return keywords_text with the given token values removed (case-insensitive)."""
+    tokens_to_strip = {t.casefold() for t in auto_tokens if t.strip()}
+    if not tokens_to_strip:
+        return keywords_text
+    return ", ".join(k for k in parse_keywords(keywords_text) if k.casefold() not in tokens_to_strip)
+
+
 def description_with_art_filter_note(description: str, art_filter_token: str) -> str:
     """Append an 'In camera effect <filter>.' note, skipping if already present."""
     token = art_filter_token.strip()
