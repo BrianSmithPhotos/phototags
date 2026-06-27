@@ -45,10 +45,10 @@ from phototags.ui.styles import (
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".orf"}
-THUMBNAIL_MAX_EDGE = 220
+THUMBNAIL_MAX_EDGE = 275
 GRID_COLUMN_COUNT = 2
-THUMBNAIL_TILE_WIDTH = 156
-THUMBNAIL_TILE_HEIGHT = 168
+THUMBNAIL_TILE_WIDTH = 195
+THUMBNAIL_TILE_HEIGHT = 210
 GRID_SPACING = 8
 PANEL_CONTENT_MARGIN = 12
 PANEL_FRAME_BORDER = 1
@@ -118,8 +118,8 @@ class ThumbnailTile(QFrame):
     def set_thumbnail(self, pixmap: QPixmap) -> None:
         """Display scaled thumbnail image."""
         scaled = pixmap.scaled(
-            140,
-            120,
+            175,
+            150,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
@@ -767,9 +767,7 @@ class SourcePanel(QWidget):
         """Remove a file from the skipped set and restore its normal tile appearance."""
         self._skipped_paths.discard(image_path)
         self._persist_skipped_for_current_folder()
-        tile = self._thumb_tiles.get(str(image_path))
-        if tile is not None:
-            tile.set_skipped(False)
+        self._restore_tile_thumbnail(image_path)
 
     def mark_unskipped_many(self, image_paths: list[Path]) -> None:
         """Remove many files from the skipped set and restore their tile appearances."""
@@ -779,9 +777,26 @@ class SourcePanel(QWidget):
             self._skipped_paths.discard(path)
         self._persist_skipped_for_current_folder()
         for path in image_paths:
-            tile = self._thumb_tiles.get(str(path))
-            if tile is not None:
-                tile.set_skipped(False)
+            self._restore_tile_thumbnail(path)
+
+    def _restore_tile_thumbnail(self, image_path: Path) -> None:
+        """Restore a tile's normal appearance and ensure it shows a real thumbnail.
+
+        When a tile is re-shown after unskipping, its thumbnail may be stale
+        (load failed), missing (tile was freshly created by _load_skipped_tiles
+        and the async decode hasn't finished yet), or intact (cached).  Apply
+        the cached pixmap immediately if present; otherwise start a fresh load
+        so the tile never stays stuck on the filename-extension placeholder.
+        """
+        tile = self._thumb_tiles.get(str(image_path))
+        if tile is None:
+            return
+        tile.set_skipped(False)
+        cached = self._thumbnail_pixmaps.get(image_path)
+        if cached is not None:
+            tile.set_thumbnail(cached)
+        else:
+            self._start_thumbnail_load(image_path=image_path, request_id=self._thumb_request_id)
 
     def is_path_skipped(self, image_path: Path) -> bool:
         """Return True when image_path is currently in the skipped set."""
