@@ -799,7 +799,11 @@ class SourcePanel(QWidget):
                 self.thumb_grid.removeWidget(tile)
                 tile.deleteLater()
             self._thumbnail_pixmaps.pop(Path(key), None)
-            self._group_sizes.pop(Path(key), None)
+            # Do NOT pop _group_sizes here — the sizes come from the grouping service
+            # (via set_group_sizes) and must survive tile destruction so that tiles
+            # re-created later (e.g. when Show Skipped is toggled on) still know their
+            # set size.  _group_sizes is reset wholesale on each folder load and on
+            # every new grouping result.
 
         removed_paths = {Path(key) for key in removed_keys}
         self._multi_selected_paths -= removed_paths

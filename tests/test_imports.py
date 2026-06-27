@@ -37,3 +37,29 @@ def test_thumbnail_tile_calls_no_deleted_methods() -> None:
         "source_panel.py still references the deleted _apply_selected_style method; "
         "update all callers to use _apply_tile_style instead"
     )
+
+
+def test_remove_from_session_does_not_pop_group_sizes() -> None:
+    """Regression guard: _remove_from_session must not evict entries from _group_sizes.
+
+    When it did, tiles re-created for unskipped paths (Show Skipped feature) lost their
+    set-size badge and showed '[1]' instead of '[N in set]'.  Group sizes are owned by
+    the grouping service and survive tile destruction; they are reset only on a new
+    folder load or a new grouping result via set_group_sizes().
+    """
+    source = (
+        Path(__file__).parent.parent
+        / "phototags"
+        / "ui"
+        / "widgets"
+        / "source_panel.py"
+    ).read_text()
+    # Find the _remove_from_session method body and verify _group_sizes.pop is absent.
+    start = source.find("def _remove_from_session(")
+    # Grab until the next top-level method definition.
+    next_def = source.find("\n    def ", start + 1)
+    body = source[start:next_def] if next_def != -1 else source[start:]
+    assert "_group_sizes.pop" not in body, (
+        "_remove_from_session must not pop from _group_sizes — that breaks the "
+        "set-size label on tiles re-created after unskipping (Show Skipped feature)"
+    )

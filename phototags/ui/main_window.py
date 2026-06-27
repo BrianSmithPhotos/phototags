@@ -1923,6 +1923,8 @@ class MainWindow(QMainWindow):
         path = self._selected_image_path
         if self.source_panel.is_path_skipped(path):
             self.source_panel.mark_unskipped(path)
+            group_sizes = {p: len(g.members) for p, g in self._group_by_path.items()}
+            self.source_panel.set_group_sizes(group_sizes)
             self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             self.metadata_panel.set_save_status(f"Unskipped {path.name}")
             self._restore_metadata_action_controls()
@@ -1944,6 +1946,8 @@ class MainWindow(QMainWindow):
 
         if self.source_panel.is_path_skipped(selected):
             self.source_panel.mark_unskipped_many(members)
+            group_sizes = {p: len(g.members) for p, g in self._group_by_path.items()}
+            self.source_panel.set_group_sizes(group_sizes)
             self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             label = f"Unskipped {selected.name}" if len(members) == 1 else f"Unskipped capture set ({len(members)} files)"
             self.metadata_panel.set_save_status(label)
