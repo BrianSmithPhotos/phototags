@@ -413,7 +413,7 @@ class SourcePanel(QWidget):
         self.photo_selected.emit(image_paths[0])
 
     def _find_supported_images(self, folder_path: Path) -> list[Path]:
-        """Return sorted list of supported image files in folder."""
+        """Return sorted list of supported image files in folder, excluding skipped paths."""
         try:
             files = [
                 item
@@ -426,6 +426,29 @@ class SourcePanel(QWidget):
         except OSError:
             return []
 
+        return sorted(files, key=lambda item: item.name.lower())
+
+    def all_folder_image_paths(self) -> list[Path]:
+        """All supported images in the current folder, including skipped paths.
+
+        Used as the input to capture-group detection so that group membership
+        is known for skipped paths too — without this, unskipping a path that
+        was a non-representative member would leave it detached from its group
+        because the grouping task had never seen it.
+        """
+        folder = self._current_folder
+        if folder is None:
+            return []
+        try:
+            files = [
+                item
+                for item in folder.iterdir()
+                if item.is_file()
+                and item.suffix.lower() in SUPPORTED_SUFFIXES
+                and not item.name.startswith(".")
+            ]
+        except OSError:
+            return []
         return sorted(files, key=lambda item: item.name.lower())
 
     def _clear_grid(self) -> None:

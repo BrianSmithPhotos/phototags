@@ -351,7 +351,11 @@ class MainWindow(QMainWindow):
 
     def _on_folder_selected(self, folder_path: Path) -> None:
         """Start background capture grouping for the selected folder."""
-        image_paths = self.source_panel.current_image_paths
+        # Use ALL images in the folder (including skipped ones) so that group
+        # membership is known for every path.  Without this, unskipping a
+        # non-representative member leaves it detached from its group because
+        # _group_by_path was never given its data.
+        image_paths = self.source_panel.all_folder_image_paths()
         self._capture_groups = tuple()
         self._group_by_path = {}
         self._group_ui_last_applied_at = 0.0
