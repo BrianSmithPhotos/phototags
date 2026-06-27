@@ -45,10 +45,10 @@ from phototags.ui.styles import (
 from phototags.workers.image_loader import ImageLoadSignals, ImageLoadTask
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".orf"}
-THUMBNAIL_MAX_EDGE = 275
+THUMBNAIL_MAX_EDGE = 280
 GRID_COLUMN_COUNT = 2
 THUMBNAIL_TILE_WIDTH = 195
-THUMBNAIL_TILE_HEIGHT = 210
+THUMBNAIL_TILE_HEIGHT = 278
 GRID_SPACING = 8
 PANEL_CONTENT_MARGIN = 12
 PANEL_FRAME_BORDER = 1
@@ -84,6 +84,7 @@ class ThumbnailTile(QFrame):
         self._group_size = 1
         self._is_selected = False
         self._is_skipped = False
+        self._scaled_pixmap: QPixmap | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -98,7 +99,7 @@ class ThumbnailTile(QFrame):
         self.thumb_label = QLabel("Loading...")
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_label.setObjectName("thumbLabel")
-        self.thumb_label.setFixedSize(140, 120)
+        self.thumb_label.setFixedSize(179, 224)
         layout.addWidget(self.thumb_label, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.name_label = QLabel("")
@@ -118,16 +119,18 @@ class ThumbnailTile(QFrame):
     def set_thumbnail(self, pixmap: QPixmap) -> None:
         """Display scaled thumbnail image."""
         scaled = pixmap.scaled(
-            175,
-            150,
+            179,
+            224,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        self._scaled_pixmap = scaled
         self.thumb_label.setPixmap(scaled)
         self.thumb_label.setText("")
 
     def set_placeholder_text(self, text: str) -> None:
         """Display fallback text when thumbnail decoding fails."""
+        self._scaled_pixmap = None
         self.thumb_label.setPixmap(QPixmap())
         self.thumb_label.setText(text)
 
@@ -181,6 +184,12 @@ class ThumbnailTile(QFrame):
             }}
             """
         )
+        # Qt can blank a child QLabel's pixmap when the parent's stylesheet is
+        # re-applied (the CSS re-evaluation triggers a repaint that may not
+        # preserve the pixmap state).  Re-pin it here to make every style
+        # transition safe regardless of Qt version or platform behaviour.
+        if self._scaled_pixmap is not None:
+            self.thumb_label.setPixmap(self._scaled_pixmap)
 
 
 class SourcePanel(QWidget):
@@ -785,8 +794,9 @@ class SourcePanel(QWidget):
         When a tile is re-shown after unskipping, its thumbnail may be stale
         (load failed), missing (tile was freshly created by _load_skipped_tiles
         and the async decode hasn't finished yet), or intact (cached).  Apply
-        the cached pixmap immediately if present; otherwise start a fresh load
-        so the tile never stays stuck on the filename-extension placeholder.
+        the cached pixmap immediately if present and emit thumbnail_loaded so
+        the preview panel's variant strip also refreshes; otherwise start a
+        fresh load (the load path already emits thumbnail_loaded on completion).
         """
         tile = self._thumb_tiles.get(str(image_path))
         if tile is None:
@@ -795,6 +805,7 @@ class SourcePanel(QWidget):
         cached = self._thumbnail_pixmaps.get(image_path)
         if cached is not None:
             tile.set_thumbnail(cached)
+            self.thumbnail_loaded.emit(image_path)
         else:
             self._start_thumbnail_load(image_path=image_path, request_id=self._thumb_request_id)
 
