@@ -324,16 +324,22 @@ class MainWindow(QMainWindow):
         uses this mapping to keep a hidden member's selection (e.g. via the preview's
         variant strip) reflected as a selection of its group's visible tile.
         """
-        current_paths = self.source_panel.current_image_paths
+        # Exclude skipped paths: they are revealed individually when Show Skipped
+        # is on and must not be folded into the stacking calculation — otherwise
+        # they'd be hidden again by _relayout_grid even while the toggle is active.
+        active_paths = [
+            p for p in self.source_panel.current_image_paths
+            if not self.source_panel.is_path_skipped(p)
+        ]
         present_members_by_group: dict[int, list[Path]] = {}
-        for path in current_paths:
+        for path in active_paths:
             group = self._group_by_path.get(path)
             if group is None:
                 continue
             present_members_by_group.setdefault(id(group), []).append(path)
 
         member_to_visible: dict[Path, Path] = {}
-        for path in current_paths:
+        for path in active_paths:
             group = self._group_by_path.get(path)
             if group is None:
                 continue
@@ -360,6 +366,7 @@ class MainWindow(QMainWindow):
         self._group_by_path = {}
         self._group_ui_last_applied_at = 0.0
         self.source_panel.set_group_sizes({})
+        self.source_panel.set_all_non_representative_paths(set())
         self.source_panel.set_capture_group_membership({})
 
         if not image_paths:
@@ -578,8 +585,13 @@ class MainWindow(QMainWindow):
             return
         self._group_ui_last_applied_at = now
 
-        group_sizes = {path: len(group.members) for path, group in self._group_by_path.items()}
-        self.source_panel.set_group_sizes(group_sizes)
+        all_non_reps = {
+            path
+            for path, group in self._group_by_path.items()
+            if path != group.representative_path and len(group.members) > 1
+        }
+        self.source_panel.set_all_non_representative_paths(all_non_reps)
+        self.source_panel.set_group_sizes(self._compute_effective_group_sizes())
         self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
 
         # The very first file opened at folder-load time is often selected before this
@@ -1918,6 +1930,32 @@ class MainWindow(QMainWindow):
             unique.append(path)
         return unique
 
+    def _compute_effective_group_sizes(self) -> dict[Path, int]:
+        """Return group sizes reduced by the number of currently skipped members.
+
+        A negative value signals a fully-skipped capture set: its absolute value
+        is the original member count, and the tile renders it as '[0 of N]' so
+        the user can tell it was a multi-file set even when every file is skipped.
+        A positive value is the normal active-member count shown as '[N in set]'.
+        """
+        sizes: dict[Path, int] = {}
+        seen: set[str] = set()
+        for path, group in self._group_by_path.items():
+            if group.group_id in seen:
+                continue
+            seen.add(group.group_id)
+            effective = sum(
+                1 for m in group.members if not self.source_panel.is_path_skipped(m)
+            )
+            total = len(group.members)
+            if effective == 0 and total > 1:
+                stored = -total  # negative encodes "fully skipped, total was N"
+            else:
+                stored = max(1, effective)
+            for m in group.members:
+                sizes[m] = stored
+        return sizes
+
     def _on_skip_single_selected(self) -> None:
         """Skip or unskip the selected file (toggles when Show Skipped is active)."""
         if self._selected_image_path is None:
@@ -1927,13 +1965,13 @@ class MainWindow(QMainWindow):
         path = self._selected_image_path
         if self.source_panel.is_path_skipped(path):
             self.source_panel.mark_unskipped(path)
-            group_sizes = {p: len(g.members) for p, g in self._group_by_path.items()}
-            self.source_panel.set_group_sizes(group_sizes)
+            self.source_panel.set_group_sizes(self._compute_effective_group_sizes())
             self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             self.metadata_panel.set_save_status(f"Unskipped {path.name}")
             self._restore_metadata_action_controls()
         else:
             self.source_panel.mark_skipped(path)
+            self.source_panel.set_group_sizes(self._compute_effective_group_sizes())
             self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             self.metadata_panel.set_save_status(f"Skipped {path.name}")
 
@@ -1950,14 +1988,14 @@ class MainWindow(QMainWindow):
 
         if self.source_panel.is_path_skipped(selected):
             self.source_panel.mark_unskipped_many(members)
-            group_sizes = {p: len(g.members) for p, g in self._group_by_path.items()}
-            self.source_panel.set_group_sizes(group_sizes)
+            self.source_panel.set_group_sizes(self._compute_effective_group_sizes())
             self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             label = f"Unskipped {selected.name}" if len(members) == 1 else f"Unskipped capture set ({len(members)} files)"
             self.metadata_panel.set_save_status(label)
             self._restore_metadata_action_controls()
         else:
             self.source_panel.mark_skipped_many(members)
+            self.source_panel.set_group_sizes(self._compute_effective_group_sizes())
             self.source_panel.set_capture_group_membership(self._non_representative_paths_for_current_groups())
             label = f"Skipped {selected.name}" if len(members) == 1 else f"Skipped capture set ({len(members)} files)"
             self.metadata_panel.set_save_status(label)
@@ -2050,7 +2088,17 @@ class MainWindow(QMainWindow):
 
         members = list(save_set_scope(selected_path, self._multi_selected_paths, self._group_by_path))
         self._variant_selected_paths = set(members)
-        thumbnails = {path: self.source_panel.thumbnail_for_path(path) for path in members}
+        # Skipped paths always render as "JPG" in the strip so they remain visually
+        # distinct regardless of whether Show Skipped has loaded their pixmap into
+        # the left-nav tile.
+        thumbnails = {
+            path: (
+                None
+                if self.source_panel.is_path_skipped(path)
+                else self.source_panel.thumbnail_for_path(path)
+            )
+            for path in members
+        }
         self.preview_panel.set_variants(members, selected_path, thumbnails)
 
     def _update_rename_preview(self) -> None:

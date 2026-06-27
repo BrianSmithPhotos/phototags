@@ -135,13 +135,27 @@ class ThumbnailTile(QFrame):
         self.thumb_label.setText(text)
 
     def set_group_size(self, size: int) -> None:
-        """Update filename caption with grouped set size."""
+        """Update filename caption with grouped set size.
+
+        A negative value signals a fully-skipped capture set whose absolute
+        value is the original member count; it renders as '[0 of N]' so the
+        user can identify the set even when every file is skipped.
+        """
+        if size < 0:
+            total = -size
+            self._group_size = 0
+            self.name_label.setText(f"{self.image_path.name}\n[0 of {total}]")
+            return
         bounded = max(1, size)
         self._group_size = bounded
         if bounded > 1:
             self.name_label.setText(f"{self.image_path.name}\n[{bounded} in set]")
             return
         self.name_label.setText(self.image_path.name)
+
+    def set_skipped_member_label(self) -> None:
+        """Show 'skipped' caption for a non-representative member tile."""
+        self.name_label.setText(f"{self.image_path.name}\nskipped")
 
     def set_selected(self, selected: bool) -> None:
         """Apply selected or normal tile styling."""
@@ -224,6 +238,7 @@ class SourcePanel(QWidget):
         self._stacked_enabled = True
         self._show_skipped = False
         self._non_representative_paths: set[Path] = set()
+        self._all_non_representative_paths: set[Path] = set()
         self._member_to_visible_path: dict[Path, Path] = {}
         self._build_ui()
         self._set_source_path(source_dir)
@@ -610,8 +625,35 @@ class SourcePanel(QWidget):
     def set_group_sizes(self, group_sizes: dict[Path, int]) -> None:
         """Apply grouped set-size hints to current thumbnail captions."""
         self._group_sizes = dict(group_sizes)
+        self._refresh_all_tile_labels()
+
+    def set_all_non_representative_paths(self, paths: set[Path]) -> None:
+        """Record every non-representative path in the folder (including skipped ones).
+
+        Used purely for tile label display: a skipped tile whose path is in this
+        set shows 'skipped' rather than '[N in set]', because unskipping it
+        affects only that single file, not the whole capture set.  Populated
+        once from the grouping worker result; does not change on skip/unskip.
+        """
+        self._all_non_representative_paths = set(paths)
+        self._refresh_all_tile_labels()
+
+    def _refresh_all_tile_labels(self) -> None:
+        """Set each tile's caption correctly given current skipped and grouping state.
+
+        Non-representative tiles that are skipped (only visible when Show Skipped
+        is on) show 'skipped' instead of '[N in set]' because selecting one
+        unskips only that single file, not the whole capture set.  The check
+        uses _all_non_representative_paths (populated from the grouping service
+        and including skipped members) rather than _non_representative_paths
+        (which only tracks currently-active session members).
+        """
         for path_text, tile in self._thumb_tiles.items():
-            tile.set_group_size(self._group_sizes.get(Path(path_text), 1))
+            path = Path(path_text)
+            if path in self._skipped_paths and path in self._all_non_representative_paths:
+                tile.set_skipped_member_label()
+            else:
+                tile.set_group_size(self._group_sizes.get(path, 1))
 
     def set_capture_group_membership(self, member_to_visible_path: dict[Path, Path]) -> None:
         """Record which currently-displayed files are non-representative capture-set members.
@@ -627,6 +669,7 @@ class SourcePanel(QWidget):
         self._non_representative_paths = set(self._member_to_visible_path.keys())
         self._apply_panel_max_width()
         self._relayout_grid()
+        self._refresh_all_tile_labels()
 
     def _on_show_skipped_toggled(self, checked: bool) -> None:
         self._show_skipped = checked
@@ -654,7 +697,10 @@ class SourcePanel(QWidget):
         )
         for path in skipped_here:
             tile = ThumbnailTile(image_path=path)
-            tile.set_group_size(self._group_sizes.get(path, 1))
+            if path in self._all_non_representative_paths:
+                tile.set_skipped_member_label()
+            else:
+                tile.set_group_size(self._group_sizes.get(path, 1))
             tile.clicked.connect(self._on_tile_clicked)
             self._thumb_tiles[str(path)] = tile
             self._start_thumbnail_load(image_path=path, request_id=self._thumb_request_id)
@@ -788,6 +834,31 @@ class SourcePanel(QWidget):
         for path in image_paths:
             self._restore_tile_thumbnail(path)
 
+    def _add_path_to_session(self, image_path: Path) -> None:
+        """Re-insert a previously-removed path into the visible session.
+
+        Called when a path is unskipped while Show Skipped is off — the tile
+        was destroyed and the path evicted from current_image_paths when it
+        was skipped.  Recreating the tile here means the left-nav tile
+        reappears and the async thumbnail load can complete normally, which in
+        turn fires thumbnail_loaded so the variant strip button refreshes too.
+        """
+        if str(image_path) in self._thumb_tiles:
+            return
+        self._current_image_paths = sorted(
+            self._current_image_paths + [image_path],
+            key=lambda p: p.name.lower(),
+        )
+        tile = ThumbnailTile(image_path=image_path)
+        # Path is being unskipped so it's no longer in _skipped_paths; use group size.
+        tile.set_group_size(self._group_sizes.get(image_path, 1))
+        tile.clicked.connect(self._on_tile_clicked)
+        self._thumb_tiles[str(image_path)] = tile
+        self._relayout_grid()
+        self._apply_multi_selection_style()
+        self._update_file_count_label()
+        self._start_thumbnail_load(image_path=image_path, request_id=self._thumb_request_id)
+
     def _restore_tile_thumbnail(self, image_path: Path) -> None:
         """Restore a tile's normal appearance and ensure it shows a real thumbnail.
 
@@ -800,6 +871,10 @@ class SourcePanel(QWidget):
         """
         tile = self._thumb_tiles.get(str(image_path))
         if tile is None:
+            # Tile was destroyed when the image was skipped (Show Skipped was off).
+            # Recreate it so the left-nav tile reappears and the variant strip
+            # button refreshes once the async decode completes.
+            self._add_path_to_session(image_path)
             return
         tile.set_skipped(False)
         cached = self._thumbnail_pixmaps.get(image_path)
