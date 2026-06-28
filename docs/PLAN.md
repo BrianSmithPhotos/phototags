@@ -1,6 +1,6 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-25
+Last updated: 2026-06-27
 
 This document is the active implementation snapshot + next-step checklist.
 
@@ -393,24 +393,23 @@ Use this when importing a new full-history timeline export.
 
 ### Automated test coverage
 
-- [x] Initial pytest suite (141 tests, `tests/services/`) covering pure logic
+- [x] Pytest suite (237 tests, `tests/services/`) covering pure logic
   (`auto_metadata`, `capture_group_service`, `rename_service`,
   `exif_service` field-mapping/GPS-parsing/art-filter-fallback,
   `ai_suggestion_service` JSON-extraction/keyword-normalize/refinement
   decision, `process_move_service` destination routing, and two service
   modules extracted from `main_window.py`/`source_panel.py` for
-  testability: `selection_scope.py` — also covers the cmd/shift-click
-  multi-select regression where the ORF-preview-default redirect was
-  silently collapsing an active multi-selection, and the follow-on
-  shift-click regression where that same redirect left the range anchor on
-  a hidden capture-set member — and `grid_navigation.py`),
+  testability: `selection_scope.py` and `grid_navigation.py`),
   `subprocess`/`urllib`-boundary-mocked tests for
   `ExifService.read_full_metadata`, `MetadataWriteService`,
   `AiSuggestionService.suggest_for_image`/`_read_previewable_image_bytes`,
-  `ElevationLookupService` (including the altitude-lookup cache), and
-  `ReverseGeocodeService`, plus `timeline_location_service.py` coordinate/
+  `ElevationLookupService` (including the altitude-lookup cache),
+  `ReverseGeocodeService`, `timeline_location_service.py` coordinate/
   timestamp parsing and `suggest_for_capture` end-to-end against a real
-  temp SQLite cache.
+  temp SQLite cache, and both AI provider implementations
+  (`OllamaProvider`, `OpenRouterProvider`) covering response-extraction
+  fallback chains, retry budget logic, timeout detection, capability
+  checking, and all network error paths.
   See `docs/TESTING.md` for what's covered and the prioritized list of what
   to add next (integration tests, then `pytest-qt` widget tests only if
   needed).
