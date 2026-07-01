@@ -1,6 +1,6 @@
 ## MacPhotoMaster Plan (Current)
 
-Last updated: 2026-06-27
+Last updated: 2026-06-30
 
 This document is the active implementation snapshot + next-step checklist.
 
@@ -464,6 +464,14 @@ Use this when importing a new full-history timeline export.
   the prefix before it reaches the provider. No prefix falls back to the
   env-var-selected default provider. Provider instances are created lazily per
   prefix and reused (`AiSuggestionService._resolve_provider_and_model`).
+
+### Packaging
+
+- [x] `py2app` build (`setup.py`) producing a Dock-launchable `MacPhotoMaster.app`, with a custom
+  icon (`resources/AppIcon.icns`, generated via `scripts/make_icns.sh`). Alias build
+  (`py2app -A`) works; standalone build is blocked by a `zlib` incompatibility in `uv`'s
+  managed CPython. Full details, rebuild steps, and the icon-regeneration workflow: see
+  `docs/PACKAGING.md`.
 
 ### Integration stretch goals
 

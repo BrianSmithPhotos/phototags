@@ -186,3 +186,4 @@ Repository privacy protection is in place:
 
 - Current implementation status and test checklist: `docs/PLAN.md`
 - AI model comparison (accuracy/cost/speed across 15 models) and eval harness: `eval/RESULTS.md`
+- Building a Dock-launchable `.app` bundle (`py2app`) and setting a custom icon: `docs/PACKAGING.md`
