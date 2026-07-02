@@ -10,7 +10,9 @@ import re
 import subprocess
 from typing import Any
 
-EXIFTOOL_READ_COMMAND = ("exiftool", "-j", "-G1", "-a", "-s")
+from phototags.services.exiftool_path import EXIFTOOL_PATH
+
+EXIFTOOL_READ_COMMAND = (EXIFTOOL_PATH, "-j", "-G1", "-a", "-s")
 EXIFTOOL_READ_CHUNK_SIZE = 50
 
 

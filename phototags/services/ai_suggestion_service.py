@@ -15,6 +15,7 @@ from typing import Any
 
 from PIL import Image, ImageOps
 
+from phototags.services.exiftool_path import EXIFTOOL_PATH
 from phototags.services.image_utils import apply_exif_orientation
 from phototags.services.ai_provider import (
     AiProvider,
@@ -696,7 +697,7 @@ class AiSuggestionService:
             return image_path.read_bytes()
 
         result = subprocess.run(
-            ["exiftool", "-b", "-PreviewImage", str(image_path)],
+            [EXIFTOOL_PATH, "-b", "-PreviewImage", str(image_path)],
             capture_output=True,
             check=False,
             timeout=12,
@@ -758,7 +759,7 @@ def _read_raw_orientation(path: Path) -> int:
     """Return the EXIF Orientation integer from a RAW file, or 1 (upright) on any failure."""
     try:
         result = subprocess.run(
-            ["exiftool", "-j", "-Orientation#", str(path)],
+            [EXIFTOOL_PATH, "-j", "-Orientation#", str(path)],
             capture_output=True,
             check=False,
             timeout=4,

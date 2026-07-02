@@ -10,6 +10,7 @@ import subprocess
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from phototags.services.exiftool_path import EXIFTOOL_PATH
 from phototags.services.image_utils import apply_exif_orientation
 
 RAW_SUFFIXES = {".orf", ".raf", ".nef", ".cr2", ".cr3", ".arw", ".rw2"}
@@ -82,7 +83,7 @@ class ImageLoadTask(QRunnable):
         the correct transform so portrait shots render upright.
         """
         result = subprocess.run(
-            ["exiftool", "-b", "-PreviewImage", str(path)],
+            [EXIFTOOL_PATH, "-b", "-PreviewImage", str(path)],
             capture_output=True,
             check=False,
             timeout=8,
@@ -103,7 +104,7 @@ def _read_raw_orientation(path: Path) -> int:
     """Return the EXIF Orientation integer from a RAW file, or 1 (upright) on any failure."""
     try:
         result = subprocess.run(
-            ["exiftool", "-j", "-Orientation#", str(path)],
+            [EXIFTOOL_PATH, "-j", "-Orientation#", str(path)],
             capture_output=True,
             check=False,
             timeout=4,

@@ -10,6 +10,8 @@ import re
 import subprocess
 from typing import Any
 
+from phototags.services.exiftool_path import EXIFTOOL_PATH
+
 GROUP_READ_TAGS: tuple[str, ...] = (
     "DateTimeOriginal",
     "CreateDate",
@@ -160,7 +162,7 @@ class CaptureGroupService:
         for start in range(0, len(sorted_paths), GROUP_READ_CHUNK_SIZE):
             chunk = sorted_paths[start : start + GROUP_READ_CHUNK_SIZE]
             command = [
-                "exiftool",
+                EXIFTOOL_PATH,
                 "-j",
                 "-s",
                 "-q",

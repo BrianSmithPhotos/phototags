@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
+from phototags.services.exiftool_path import EXIFTOOL_PATH
+
 
 @dataclass(slots=True)
 class MetadataWriteResult:
@@ -170,7 +172,7 @@ class MetadataWriteService:
             gps_longitude=gps_longitude,
             gps_altitude=gps_altitude,
         )
-        command = ["exiftool"]
+        command = [EXIFTOOL_PATH]
         if title is not None:
             command.extend(
                 [
