@@ -226,3 +226,106 @@ def test_read_full_metadata_raises_when_exiftool_returns_no_entries(monkeypatch:
 
     with pytest.raises(ExifToolReadError, match="No metadata returned"):
         service.read_full_metadata(Path("a.jpg"))
+
+
+def test_read_full_metadata_for_paths_batches_into_one_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command)
+        return _completed(
+            stdout=(
+                '[{"SourceFile": "a.jpg", "EXIF:Make": "OM"}, '
+                '{"SourceFile": "b.jpg", "EXIF:Make": "Canon"}]'
+            )
+        )
+
+    monkeypatch.setattr(exif_service_module.subprocess, "run", fake_run)
+    service = ExifService()
+
+    result = service.read_full_metadata_for_paths([Path("a.jpg"), Path("b.jpg")])
+
+    assert len(calls) == 1
+    assert result[Path("a.jpg")] == {"SourceFile": "a.jpg", "EXIF:Make": "OM"}
+    assert result[Path("b.jpg")] == {"SourceFile": "b.jpg", "EXIF:Make": "Canon"}
+
+
+def test_read_full_metadata_for_paths_falls_back_per_file_when_missing_from_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_count = 0
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # Batch call: exiftool only managed to read one of the two files.
+            return _completed(stdout='[{"SourceFile": "a.jpg", "EXIF:Make": "OM"}]')
+        path = command[-1]
+        return _completed(stdout=f'[{{"SourceFile": "{path}", "EXIF:Make": "Fallback"}}]')
+
+    monkeypatch.setattr(exif_service_module.subprocess, "run", fake_run)
+    service = ExifService()
+
+    result = service.read_full_metadata_for_paths([Path("a.jpg"), Path("b.jpg")])
+
+    assert call_count == 2
+    assert result[Path("a.jpg")] == {"SourceFile": "a.jpg", "EXIF:Make": "OM"}
+    assert result[Path("b.jpg")] == {"SourceFile": "b.jpg", "EXIF:Make": "Fallback"}
+
+
+def test_read_full_metadata_for_paths_falls_back_on_batch_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    call_count = 0
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise subprocess.TimeoutExpired(cmd=command, timeout=1)
+        path = command[-1]
+        return _completed(stdout=f'[{{"SourceFile": "{path}", "EXIF:Make": "Retry"}}]')
+
+    monkeypatch.setattr(exif_service_module.subprocess, "run", fake_run)
+    service = ExifService()
+
+    result = service.read_full_metadata_for_paths([Path("a.jpg"), Path("b.jpg")])
+
+    assert call_count == 3  # 1 batch timeout + 2 per-file fallback
+    assert result[Path("a.jpg")] == {"SourceFile": "a.jpg", "EXIF:Make": "Retry"}
+    assert result[Path("b.jpg")] == {"SourceFile": "b.jpg", "EXIF:Make": "Retry"}
+
+
+def test_read_full_metadata_for_paths_captures_individual_failure_as_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        exif_service_module.subprocess,
+        "run",
+        lambda *a, **k: _completed(returncode=1, stderr="File not found"),
+    )
+    service = ExifService()
+
+    result = service.read_full_metadata_for_paths([Path("missing.jpg")])
+
+    outcome = result[Path("missing.jpg")]
+    assert isinstance(outcome, ExifToolReadError)
+    assert "File not found" in str(outcome)
+
+
+def test_read_full_metadata_for_paths_chunks_large_batches(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command)
+        requested = command[len(exif_service_module.EXIFTOOL_READ_COMMAND) :]
+        entries = ", ".join(f'{{"SourceFile": "{path}"}}' for path in requested)
+        return _completed(stdout=f"[{entries}]")
+
+    monkeypatch.setattr(exif_service_module.subprocess, "run", fake_run)
+    service = ExifService()
+    paths = [Path(f"{i}.jpg") for i in range(exif_service_module.EXIFTOOL_READ_CHUNK_SIZE + 5)]
+
+    result = service.read_full_metadata_for_paths(paths)
+
+    assert len(calls) == 2
+    assert len(result) == len(paths)

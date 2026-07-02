@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
@@ -12,7 +13,7 @@ from phototags.services.auto_metadata import (
     keywords_with_auto_tokens,
     sooc_token_for,
 )
-from phototags.services.exif_service import ExifService, ExifToolReadError, ExifUiData
+from phototags.services.exif_service import ExifService, ExifToolReadError
 from phototags.services.process_move_service import ProcessMoveError, ProcessMoveService
 from phototags.services.rename_service import RenameContext, RenameService
 
@@ -72,11 +73,20 @@ class ProcessBatchTask(QRunnable):
         self.signals = signals
 
     def run(self) -> None:
-        """Process all files in the batch and emit one aggregate result."""
+        """Process all files in the batch and emit one aggregate result.
+
+        EXIF reads are batched into one exiftool call per chunk
+        (`ExifService.read_full_metadata_for_paths`) instead of one process spawn
+        per file. Writes stay per-file: each destination file gets a unique
+        rename-derived title, so there is no shared-value group to batch.
+        """
         try:
+            metadata_by_path = self.exif_service.read_full_metadata_for_paths(
+                list(self.image_paths)
+            )
             outcomes: list[ProcessBatchItemOutcome] = []
             for image_path in self.image_paths:
-                outcome = self._process_one(image_path)
+                outcome = self._process_one(image_path, metadata_by_path[image_path])
                 outcomes.append(outcome)
 
             success_count = sum(1 for item in outcomes if not item.error)
@@ -98,16 +108,17 @@ class ProcessBatchTask(QRunnable):
             except RuntimeError:
                 return
 
-    def _process_one(self, image_path: Path) -> ProcessBatchItemOutcome:
+    def _process_one(
+        self, image_path: Path, metadata: dict[str, Any] | ExifToolReadError
+    ) -> ProcessBatchItemOutcome:
         """Process one file and return success/failure outcome."""
-        try:
-            ui_data = self._read_exif_ui(image_path)
-        except (OSError, ValueError, ExifToolReadError, RuntimeError) as exc:
+        if isinstance(metadata, ExifToolReadError):
             return ProcessBatchItemOutcome(
                 source_path=str(image_path),
                 destination_path="",
-                error=f"EXIF read failed: {exc}",
+                error=f"EXIF read failed: {metadata}",
             )
+        ui_data = self.exif_service.map_for_ui(metadata)
 
         draft = self.draft_by_path.get(str(image_path))
         if draft is not None:
@@ -167,8 +178,3 @@ class ProcessBatchTask(QRunnable):
             destination_path=str(result.destination_path),
             error="",
         )
-
-    def _read_exif_ui(self, image_path: Path) -> ExifUiData:
-        """Read one file's EXIF and map it for downstream processing."""
-        metadata = self.exif_service.read_full_metadata(image_path)
-        return self.exif_service.map_for_ui(metadata)

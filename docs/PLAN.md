@@ -393,7 +393,7 @@ Use this when importing a new full-history timeline export.
 
 ### Automated test coverage
 
-- [x] Pytest suite (237 tests, `tests/services/`) covering pure logic
+- [x] Pytest suite (246 tests, `tests/services/`) covering pure logic
   (`auto_metadata`, `capture_group_service`, `rename_service`,
   `exif_service` field-mapping/GPS-parsing/art-filter-fallback,
   `ai_suggestion_service` JSON-extraction/keyword-normalize/refinement
@@ -429,6 +429,26 @@ Use this when importing a new full-history timeline export.
 - [ ] Validate whether second-level grouping causes false merges in dense bursts.
 - [ ] Evaluate stronger grouping keys (camera serial + subseconds + exposure guards) only if needed after field testing.
 
+
+### Performance
+
+- [x] Batched exiftool reads/writes for multi-file operations. exiftool's
+  per-invocation cost is dominated by its own process/Perl-interpreter
+  startup, so one file at a time was ~15x slower than batching (measured on a
+  20-file sample). `ExifService.read_full_metadata_for_paths` and
+  `MetadataWriteService.write_description_keywords_for_paths` batch multiple
+  files into one exiftool call (chunked via `EXIFTOOL_READ_CHUNK_SIZE`),
+  falling back to the existing per-file methods for any path that fails or
+  times out in the batch, so per-file error granularity and rollback
+  semantics are unchanged. `MetadataBatchSaveTask` (Save Capture Set/Save
+  Selected) now batch-reads and groups writes by identical
+  description/keywords/GPS values; `ProcessBatchTask` (Process & Move)
+  batch-reads only, since each destination file gets a unique
+  rename-derived title and so can't share a write batch. The same
+  batched-read pattern (multi-file-per-invocation, `SourceFile`-keyed JSON,
+  per-file fallback) is documented for the Swift rewrite in
+  `MacPhotoMaster-Swift/docs/ARCHITECTURE.md` and implemented in
+  `ExifToolClient.readMetadata(at: [URL])`.
 
 ### AI model quality and specialization
 

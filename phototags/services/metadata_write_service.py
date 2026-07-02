@@ -45,7 +45,7 @@ class MetadataWriteService:
         keywords = self._normalize_keywords(keywords_text)
 
         command = self._build_exiftool_write_command(
-            image_path=image_path,
+            image_paths=[image_path],
             title=(cleaned_title if title is not None else None),
             description=cleaned_description,
             keywords=keywords,
@@ -74,10 +74,89 @@ class MetadataWriteService:
             keywords=keywords,
         )
 
+    def write_description_keywords_for_paths(
+        self,
+        image_paths: list[Path],
+        *,
+        description: str,
+        keywords_text: str,
+        gps_latitude: str | None = None,
+        gps_longitude: str | None = None,
+        gps_altitude: str | None = None,
+    ) -> dict[Path, MetadataWriteResult | MetadataWriteError]:
+        """Write identical description/keywords/GPS values to many files in one exiftool call.
+
+        Batching only amortizes exiftool's per-process startup cost across the
+        group — every path receives the exact same tag values, so only call this
+        with files already known to want an identical result (e.g. a capture set
+        whose auto-generated keywords happen to match). No title support: callers
+        that need a per-file title (renaming/process) have per-file-unique values
+        by construction and get no benefit from batching, so they should keep
+        using `write_description_keywords` per file.
+
+        On any failure (or timeout) this restores backups for the whole group and
+        falls back to writing each file individually via
+        `write_description_keywords`, preserving today's per-file rollback/error
+        behavior rather than guessing which of several files in one exiftool
+        invocation actually failed.
+        """
+        cleaned_description = description.strip()
+        keywords = self._normalize_keywords(keywords_text)
+
+        command = self._build_exiftool_write_command(
+            image_paths=image_paths,
+            title=None,
+            description=cleaned_description,
+            keywords=keywords,
+            gps_latitude=gps_latitude,
+            gps_longitude=gps_longitude,
+            gps_altitude=gps_altitude,
+        )
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=12 * len(image_paths),
+            )
+        except subprocess.TimeoutExpired:
+            result = None
+
+        if result is not None and result.returncode == 0:
+            for image_path in image_paths:
+                self._cleanup_backup(Path(f"{image_path}_original"))
+            return {
+                image_path: MetadataWriteResult(
+                    title="", description=cleaned_description, keywords=keywords
+                )
+                for image_path in image_paths
+            }
+
+        for image_path in image_paths:
+            self._restore_backup_if_present(
+                image_path=image_path, backup_path=Path(f"{image_path}_original")
+            )
+
+        results: dict[Path, MetadataWriteResult | MetadataWriteError] = {}
+        for image_path in image_paths:
+            try:
+                results[image_path] = self.write_description_keywords(
+                    image_path,
+                    description=description,
+                    keywords_text=keywords_text,
+                    gps_latitude=gps_latitude,
+                    gps_longitude=gps_longitude,
+                    gps_altitude=gps_altitude,
+                )
+            except MetadataWriteError as exc:
+                results[image_path] = exc
+        return results
+
     def _build_exiftool_write_command(
         self,
         *,
-        image_path: Path,
+        image_paths: list[Path],
         title: str | None,
         description: str,
         keywords: list[str],
@@ -85,7 +164,7 @@ class MetadataWriteService:
         gps_longitude: str | None,
         gps_altitude: str | None,
     ) -> list[str]:
-        """Construct exiftool write command."""
+        """Construct an exiftool write command applying the same tag values to one or more files."""
         normalized_gps = self._normalize_gps_values(
             gps_latitude=gps_latitude,
             gps_longitude=gps_longitude,
@@ -127,7 +206,7 @@ class MetadataWriteService:
                         f"-GPSAltitudeRef={'0' if altitude >= 0 else '1'}",
                     ]
                 )
-        command.append(str(image_path))
+        command.extend(str(image_path) for image_path in image_paths)
         return command
 
     def _normalize_gps_values(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
@@ -13,7 +14,7 @@ from phototags.services.auto_metadata import (
     parse_keywords,
     sooc_token_for,
 )
-from phototags.services.exif_service import ExifService, ExifToolReadError, ExifUiData
+from phototags.services.exif_service import ExifService, ExifToolReadError
 from phototags.services.metadata_write_service import (
     MetadataWriteResult,
     MetadataWriteError,
@@ -113,13 +114,64 @@ class MetadataBatchSaveTask(QRunnable):
         self.signals = signals
 
     def run(self) -> None:
-        """Persist metadata for all files in this save scope."""
-        try:
-            outcomes: list[MetadataBatchItemOutcome] = []
-            for image_path in self.image_paths:
-                outcome = self._save_one(image_path)
-                outcomes.append(outcome)
+        """Persist metadata for all files in this save scope.
 
+        Reads are batched into one exiftool call per chunk
+        (`ExifService.read_full_metadata_for_paths`) and files that resolve to
+        identical write values (the common case for a capture set: same
+        description/keywords/GPS) are written in one exiftool call per group,
+        instead of two exiftool process spawns per file — exiftool's Perl
+        interpreter startup dominates its per-invocation cost, so batching wins
+        big even though the actual file work is unchanged.
+        """
+        try:
+            metadata_by_path = self.exif_service.read_full_metadata_for_paths(
+                list(self.image_paths)
+            )
+            outcome_by_path: dict[Path, MetadataBatchItemOutcome] = {}
+            write_values_by_path: dict[Path, tuple[str, str, str, str, str]] = {}
+
+            for image_path in self.image_paths:
+                metadata = metadata_by_path[image_path]
+                if isinstance(metadata, ExifToolReadError):
+                    outcome_by_path[image_path] = MetadataBatchItemOutcome(
+                        image_path=str(image_path),
+                        description="",
+                        keywords=[],
+                        error=f"EXIF read failed: {metadata}",
+                    )
+                    continue
+                write_values_by_path[image_path] = self._compute_write_values(image_path, metadata)
+
+            write_groups: dict[tuple[str, str, str, str, str], list[Path]] = {}
+            for image_path, values in write_values_by_path.items():
+                write_groups.setdefault(values, []).append(image_path)
+
+            for values, group_paths in write_groups.items():
+                description, keywords_text, gps_latitude, gps_longitude, gps_altitude = values
+                write_results = self.metadata_write_service.write_description_keywords_for_paths(
+                    group_paths,
+                    description=description,
+                    keywords_text=keywords_text,
+                    gps_latitude=gps_latitude,
+                    gps_longitude=gps_longitude,
+                    gps_altitude=gps_altitude,
+                )
+                for image_path in group_paths:
+                    write_result = write_results[image_path]
+                    if isinstance(write_result, MetadataWriteError):
+                        outcome_by_path[image_path] = MetadataBatchItemOutcome(
+                            image_path=str(image_path),
+                            description=description,
+                            keywords=parse_keywords(keywords_text),
+                            error=str(write_result),
+                        )
+                    else:
+                        outcome_by_path[image_path] = self._success_outcome(
+                            image_path=image_path, result=write_result
+                        )
+
+            outcomes = [outcome_by_path[image_path] for image_path in self.image_paths]
             success_count = sum(1 for outcome in outcomes if not outcome.error)
             failure_count = len(outcomes) - success_count
             result = MetadataBatchSaveResult(
@@ -139,18 +191,11 @@ class MetadataBatchSaveTask(QRunnable):
             except RuntimeError:
                 return
 
-    def _save_one(self, image_path: Path) -> MetadataBatchItemOutcome:
-        """Persist metadata for one file and return outcome."""
-        try:
-            ui_data = self._read_exif_ui(image_path)
-        except (OSError, ValueError, ExifToolReadError, RuntimeError) as exc:
-            return MetadataBatchItemOutcome(
-                image_path=str(image_path),
-                description="",
-                keywords=[],
-                error=f"EXIF read failed: {exc}",
-            )
-
+    def _compute_write_values(
+        self, image_path: Path, metadata: dict[str, Any]
+    ) -> tuple[str, str, str, str, str]:
+        """Resolve the description/keywords/GPS values to write for one file."""
+        ui_data = self.exif_service.map_for_ui(metadata)
         draft = self.draft_by_path.get(str(image_path))
         if draft is not None:
             description = draft[0]
@@ -173,29 +218,7 @@ class MetadataBatchSaveTask(QRunnable):
             sooc_token=sooc_token_for(image_path),
         )
         description = description_with_art_filter_note(description, ui_data.art_filter_token)
-
-        try:
-            result = self.metadata_write_service.write_description_keywords(
-                image_path,
-                description=description,
-                keywords_text=keywords_text,
-                gps_latitude=gps_latitude,
-                gps_longitude=gps_longitude,
-                gps_altitude=gps_altitude,
-            )
-        except (OSError, ValueError, MetadataWriteError, RuntimeError) as exc:
-            return MetadataBatchItemOutcome(
-                image_path=str(image_path),
-                description=description,
-                keywords=parse_keywords(keywords_text),
-                error=str(exc),
-            )
-        return self._success_outcome(image_path=image_path, result=result)
-
-    def _read_exif_ui(self, image_path: Path) -> ExifUiData:
-        """Read one file's EXIF and map to UI metadata."""
-        metadata = self.exif_service.read_full_metadata(image_path)
-        return self.exif_service.map_for_ui(metadata)
+        return description, keywords_text, gps_latitude, gps_longitude, gps_altitude
 
     def _success_outcome(
         self,
