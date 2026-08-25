@@ -27,6 +27,10 @@ cover it there per that doc's conventions.
   goes through it — do not hand-roll EXIF/IPTC/XMP parsing.
 - Background work (thumbnails, EXIF reads, AI requests, GPS lookups, metadata writes, file moves)
   must run on `QThreadPool`/`QRunnable` workers, never on the Qt main thread.
+- App icon: drawn in code by `Tools/IconGen`, a Swift package built on
+  [IconForge](https://github.com/BrianSmithPhotos/IconForge) — shared with the sibling
+  MacPhotoMaster-Swift app so the two read as a family. It is a generator run by hand, not part of
+  the app; nothing at runtime links against it. Regeneration steps: `docs/PACKAGING.md`.
 
 ## Architecture
 

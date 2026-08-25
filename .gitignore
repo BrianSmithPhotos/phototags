@@ -243,3 +243,9 @@ eval/results/*.json
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
+
+# Swift build products for the icon generator (Tools/IconGen)
+Tools/IconGen/.build/
+
+# Icon contact sheet: rendered on demand to judge the icon, not an input
+icons/contact-sheet.png

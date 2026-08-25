@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from phototags.ui.main_window import MainWindow
@@ -20,6 +21,12 @@ DEFAULT_SOURCE_CANDIDATES: tuple[Path, ...] = (
 )
 
 FALLBACK_SOURCE_DIR = Path("/Volumes")
+
+# Drawn by Tools/IconGen; see docs/PACKAGING.md. The .app bundle gets its icon
+# from resources/AppIcon.icns via Info.plist, but a plain `uv run python
+# main.py` has no bundle and so no plist to name one - Qt has to be handed the
+# image itself or the Dock shows a generic Python rocket.
+APP_ICON_PATH = Path(__file__).resolve().parent.parent / "resources" / "AppIcon.png"
 
 # Olympus/OM System cameras roll over to a new DCIM subfolder named
 # "<3-digit-number>OMSYS" every 10,000 images (e.g. "105OMSYS"). Two such
@@ -91,6 +98,8 @@ def run(source_dir: Path, smoke_test_ms: int = 0) -> int:
         The Qt application exit code.
     """
     app = QApplication([])
+    if APP_ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
     window = MainWindow(source_dir=source_dir)
     window.show()
 

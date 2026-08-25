@@ -6,10 +6,14 @@ launched with one click, instead of running `uv run python main.py` from a termi
 ### Files involved
 
 - `setup.py` — `py2app` build script (bundle name/identifier, icon wiring).
+- `Tools/IconGen/` — a small Swift package that *draws* the icon. See "The icon" below.
 - `scripts/make_icns.sh` — converts a single 1024x1024 PNG into the multi-resolution `.icns` file
   macOS app icons require.
-- `resources/AppIcon.icns` — the generated icon, built from `icons/housefinch.png`. Regenerate it
-  with `scripts/make_icns.sh` if the source PNG changes; see "Changing the icon" below.
+- `icons/AppIcon-1024.png` — the drawn icon, and the input to `make_icns.sh`.
+- `resources/AppIcon.icns` — what the bundle uses, sipped down from that PNG.
+- `resources/AppIcon.png` — the same image, handed to Qt by `phototags/app.py` so a plain
+  `uv run python main.py` gets a Dock icon too (no bundle means no `Info.plist` to name an
+  `.icns`).
 
 ### Build
 
@@ -60,13 +64,45 @@ build at all if `install_requires` is set (a frozen app bundle has no use for pi
 `py2app`'s own check runs. This is unrelated to the `zlib` limitation above and affects both build
 modes equally — without it, neither mode would get past `running py2app`.
 
-### Changing the icon
+### The icon
 
-The icon source must be a single square PNG, at least 1024x1024 (that's the largest size macOS
-embeds — `icon_512x512@2x`). Regenerate `resources/AppIcon.icns` from a new source image with:
+The icon is drawn in code, not stored as a PNG nobody can adjust. `Tools/IconGen` is a Swift
+package that renders it; the tile it draws on — the teal, the continuous-corner squircle, the light
+from above, the shadow, the 824/1024 grid every Dock icon sits on — comes from
+[IconForge](https://github.com/BrianSmithPhotos/IconForge), which the sibling
+MacPhotoMaster-Swift app draws its icon with too. Only the mark is ours: the iris is the same one
+that app uses, and the Py set into the cut is what says this is the Python one.
+
+That is why there is a Swift toolchain in a Python repo, and it is the point of it — the shared
+tile is what makes the two apps read as a family, and a redrawn-in-Pillow copy would drift.
+Nothing at runtime touches it; it is a generator run by hand, and its output is committed.
+
+To change the icon, edit `Tools/IconGen/Sources/IconGen/PyMark.swift` (or `Aperture.swift`), then:
 
 ```bash
-./scripts/make_icns.sh path/to/new-icon-1024.png
+# Draw it: writes icons/AppIcon-1024.png and resources/AppIcon.png
+swift run --package-path Tools/IconGen IconGen .
+
+# Sip that down into the multi-resolution .icns the bundle needs
+./scripts/make_icns.sh icons/AppIcon-1024.png
+
+# Pick it up
+uv run python setup.py py2app -A
 ```
 
-Then rebuild the app (`uv run python setup.py py2app -A`) to pick up the new icon.
+Judge the result at the sizes it will actually be seen at, not just at 1024:
+
+```bash
+swift run --package-path Tools/IconGen IconGen . --sheet   # icons/contact-sheet.png
+```
+
+which renders the icon with 64, 32 and 16 under it. The sheet is gitignored — it is a thing to
+look at, not an input. More on the mark itself, including which bits of it are load-bearing, in
+`Tools/IconGen/README.md`.
+
+macOS caches Dock icons aggressively; if a rebuilt bundle still shows the old one, move it to the
+Trash and rebuild, or log out and back in.
+
+The `make_icns.sh` step works with any square PNG of at least 1024x1024 (that's the largest size
+macOS embeds — `icon_512x512@2x`), so it is still the way in if you ever want to use an image
+rather than a drawn icon.

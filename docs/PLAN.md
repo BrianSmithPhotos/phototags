@@ -492,6 +492,11 @@ Use this when importing a new full-history timeline export.
   (`py2app -A`) works; standalone build is blocked by a `zlib` incompatibility in `uv`'s
   managed CPython. Full details, rebuild steps, and the icon-regeneration workflow: see
   `docs/PACKAGING.md`.
+- [x] Icon drawn in code by `Tools/IconGen`, a Swift package built on
+  [IconForge](https://github.com/BrianSmithPhotos/IconForge) — the same tile the sibling
+  MacPhotoMaster-Swift app uses, so the two read as a family; the aperture with `Py` set into
+  a cut in its blades is this app's own mark. `phototags/app.py` also hands the PNG to Qt so a
+  non-bundled `uv run python main.py` gets the icon in the Dock.
 
 ### Integration stretch goals
 
